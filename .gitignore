@@ -1,5 +1,5 @@
 # ---------- Keil / MDK 编译输出 ----------
-MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/
+MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/*
 *.o
 *.d
 *.crf
@@ -11,6 +11,9 @@ MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/
 *.build_log.htm
 *.htm
 *.sct.bak
+
+# 归档：保留可烧录的固件 hex（其余编译产物仍忽略）
+!MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/SCD2326_SK_V001.hex
 
 # ---------- Keil 用户界面配置（窗口布局，因人而异） ----------
 *.uvguix.*
