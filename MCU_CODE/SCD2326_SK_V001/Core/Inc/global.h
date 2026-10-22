@@ -11,7 +11,7 @@ extern "C" {
 /* 系统信息宏定义                                                              */
 /*============================================================================*/
 #define SW_VERSION_MAJOR      0U
-#define SW_VERSION_MINOR      1U
+#define SW_VERSION_MINOR      2U
 #define SW_VERSION_BUILD      0U
 
 #define BOARD_NAME            "SCD2326"
@@ -76,6 +76,11 @@ typedef struct
 
     /* 传感器类型（两路继电器切换 IN7~IN10 的 NPN / PNP 通道） */
     uint8_t  sensor_type;
+
+    /* 工作/调试模式 */
+    uint8_t  shot_enable;           /* 1 = 允许射击，0 = 禁止 */
+    uint16_t load_total;            /* 装填计数（IN_7 上升沿累加） */
+    uint16_t shot_count;            /* 射击次数（余弹 = load_total - shot_count） */
 
     /* 电机 */
     uint8_t  motor_duty_pct;        /* 电机默认占空比 % */

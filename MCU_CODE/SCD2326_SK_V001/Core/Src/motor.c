@@ -111,6 +111,17 @@ void Motor_SetDutyPercent(uint8_t percent)
     }
 }
 
+/* 立即停机：不做斜坡，四路门极直接关闭（用于到位、松开、过流等保护） */
+void Motor_EmergencyStop(void)
+{
+    motor.state      = MOTOR_STATE_STOP;
+    motor.state_old  = MOTOR_STATE_STOP;
+    motor.duty_set   = 0U;
+    motor.duty_curve = 0U;
+    motor.guard_ms   = 0U;
+    Motor_OutputOff();
+}
+
 /* 1ms 周期任务，放在主循环中调用 */
 void Motor_Task(void)
 {

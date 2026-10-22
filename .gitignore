@@ -18,9 +18,8 @@ MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/
 *.bak
 
 # ---------- VS Code 插件日志 ----------
-MDK-ARM/.vscode/keil-assistant.log
-MDK-ARM/.vscode/uv4.log
-MDK-ARM/.vscode/uv4.log.lock
+**/.vscode/*.log
+**/.vscode/*.log.lock
 
 # ---------- 源码压缩备份 ----------
 MCU_CODE/*.rar

@@ -475,6 +475,11 @@
               <FilePath>../Core/Src/relay.c</FilePath>
             </File>
             <File>
+              <FileName>work.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/work.c</FilePath>
+            </File>
+            <File>
               <FileName>usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/usart.c</FilePath>

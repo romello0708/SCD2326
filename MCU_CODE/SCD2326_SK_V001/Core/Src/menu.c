@@ -13,6 +13,7 @@
 #include "eeprom.h"
 #include "usart.h"
 #include "relay.h"
+#include "work.h"
 
 #define INFO_LINES      5U
 #define TEXT_LEN        21U
@@ -55,6 +56,7 @@ static const MenuPage P_MOTOR;
 static const MenuPage P_MOTOR_FWD;
 static const MenuPage P_MOTOR_REV;
 static const MenuPage P_MOTOR_DUTY;
+static const MenuPage P_MOTOR_WORK;
 static const MenuPage P_ADC;
 static const MenuPage P_ADC_LIVE;
 static const MenuPage P_ADC_PEAK;
@@ -80,6 +82,8 @@ static uint8_t s_view;        /* 0 = 列表，1 = 信息页 */
 static uint8_t s_dirty;
 static uint8_t s_key_prev[4];
 static uint32_t s_key_c_tick;
+static uint32_t s_work_tick;      /* 工作/调试模式状态页刷新计时 */
+static uint8_t s_draw_mode = 0xFFU;
 
 static char s_info_title[TEXT_LEN];
 static char s_info[INFO_LINES][TEXT_LEN];
@@ -748,6 +752,80 @@ static void Act_RelayTest(uint8_t arg)
     Info_Text(4U, "TO TOGGLE");
 }
 
+/*------------------------- 动作：工作设置 -------------------------*/
+static const char *Work_StateName(uint8_t st)
+{
+    switch (st)
+    {
+        case WORK_ST_LOAD:    return "LOADING";
+        case WORK_ST_BOLT:    return "BOLTING";
+        case WORK_ST_RESET:   return "RESET";
+        case WORK_ST_FIRE:    return "FIRING";
+        case WORK_ST_TIMEOUT: return "TIMEOUT";
+        case WORK_ST_OVER_CUR: return "OVER CUR";
+        default:              return "IDLE";
+    }
+}
+
+/* 射击允许 / 禁止切换（需保存配置才掉电保持） */
+static void Act_ShotEnableToggle(uint8_t arg)
+{
+    (void)arg;
+
+    g_cfg.shot_enable = (g_cfg.shot_enable != 0U) ? 0U : 1U;
+
+    Info_Clear();
+    Info_Title("SHOT ENABLE");
+    Info_KV(0U, "SHOT  : ", (g_cfg.shot_enable != 0U) ? "ENABLE" : "DISABLE");
+    Info_KV_U32(1U, "AMMO  : ", Work_GetAmmo());
+    Info_Text(3U, "PRESS SAVE CFG");
+    Info_Text(4U, "TO STORE");
+}
+
+/* 余弹装定：在当前余弹基础上增加 */
+static void Act_AmmoAdd(uint8_t add)
+{
+    uint32_t ammo = (uint32_t)Work_GetAmmo() + (uint32_t)add;
+
+    if (ammo > WORK_AMMO_MAX) { ammo = WORK_AMMO_MAX; }
+    Work_SetAmmo((uint16_t)ammo);
+
+    Info_Clear();
+    Info_Title("AMMO SET");
+    Info_KV_U32(0U, "ADD   : ", add);
+    Info_KV_U32(1U, "AMMO  : ", Work_GetAmmo());
+    Info_KV_U32(2U, "LOAD  : ", Work_GetLoadCount());
+    Info_KV_U32(3U, "SHOT  : ", Work_GetShotCount());
+}
+
+/* 装填计数与射击次数清零 */
+static void Act_WorkClear(uint8_t arg)
+{
+    (void)arg;
+
+    Work_ClearCounts();
+
+    Info_Clear();
+    Info_Title("CLEAR COUNT");
+    Info_KV_U32(0U, "LOAD  : ", Work_GetLoadCount());
+    Info_KV_U32(1U, "SHOT  : ", Work_GetShotCount());
+    Info_KV_U32(2U, "AMMO  : ", Work_GetAmmo());
+}
+
+/* 查看当前动作状态、到位信号与余弹 */
+static void Act_WorkStatus(uint8_t arg)
+{
+    (void)arg;
+
+    Info_Clear();
+    Info_Title("WORK STATUS");
+    Info_KV(0U, "MOTOR : ", Work_StateName(Work_GetState()));
+    Info_KV_U32(1U, "AMMO  : ", Work_GetAmmo());
+    Info_KV_U32(2U, "LOAD  : ", Work_GetLoadCount());
+    Info_KV_U32(3U, "SHOT  : ", Work_GetShotCount());
+    Info_KV(4U, "IN9/10: ", (DI_IsHigh(WORK_REAR_CH) != 0U) ? "1/0" : ((DI_IsHigh(WORK_FRONT_CH) != 0U) ? "0/1" : "0/0"));
+}
+
 /*------------------------- 动作：EEPROM -------------------------*/
 static void Act_EepSave(uint8_t arg)
 {
@@ -916,7 +994,7 @@ static const MenuPage P_MOTOR =
         ITEM_SUB("反转设置",   &P_MOTOR_REV),
         ITEM_ACT("停止",       Act_MotorStop,   0U),
         ITEM_SUB("占空比设置", &P_MOTOR_DUTY),
-        ITEM_ACT("运行状态",   Act_MotorStatus, 0U)
+        ITEM_SUB("工作设置",   &P_MOTOR_WORK)
     }
 };
 
@@ -953,6 +1031,19 @@ static const MenuPage P_MOTOR_DUTY =
         ITEM_ACT("占空 60%",   Act_MotorDuty, 60U),
         ITEM_ACT("占空 80%",   Act_MotorDuty, 80U),
         ITEM_ACT("占空 90%",   Act_MotorDuty, 90U)
+    }
+};
+
+/* 第 3 级：工作设置（射击允许、余弹装定、计数清零） */
+static const MenuPage P_MOTOR_WORK =
+{
+    "工作设置",
+    {
+        ITEM_ACT("射击允许", Act_ShotEnableToggle, 0U),
+        ITEM_ACT("余弹 +10", Act_AmmoAdd,          10U),
+        ITEM_ACT("余弹 +50", Act_AmmoAdd,          50U),
+        ITEM_ACT("清零计数", Act_WorkClear,        0U),
+        ITEM_ACT("状态查看", Act_WorkStatus,       0U)
     }
 };
 
@@ -1217,6 +1308,51 @@ static void Menu_DrawInfo(void)
     OLED_Refresh();
 }
 
+/* 工作/调试模式状态页：标题中文，数据行用 6x8 ASCII */
+static void Menu_DrawWork(void)
+{
+    char buf[32];
+    char num[11];
+    const char *title;
+
+    switch (g_cfg.work_mode)
+    {
+        case WORK_MODE_WORK:  title = "工作模式"; break;
+        case WORK_MODE_DEBUG: title = "调试模式"; break;
+        default:              title = "模式异常"; break;
+    }
+
+    OLED_Clear();
+    OLED_ShowUTF8(0U, 0U, title, 0U);
+
+    Str_Set(buf, "AMMO : ");
+    Fmt_U32(num, Work_GetAmmo());
+    Str_Add(buf, num);
+    OLED_ShowString(0U, 18U, buf, OLED_SIZE_8, 0U);
+
+    Str_Set(buf, "LOAD : ");
+    Fmt_U32(num, Work_GetLoadCount());
+    Str_Add(buf, num);
+    Str_Add(buf, " SHOT: ");
+    Fmt_U32(num, Work_GetShotCount());
+    Str_Add(buf, num);
+    OLED_ShowString(0U, 28U, buf, OLED_SIZE_8, 0U);
+
+    Str_Set(buf, "IN9:");
+    Str_Add(buf, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "1" : "0");
+    Str_Add(buf, " IN10:");
+    Str_Add(buf, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "1" : "0");
+    Str_Add(buf, " EN:");
+    Str_Add(buf, (g_cfg.shot_enable != 0U) ? "1" : "0");
+    OLED_ShowString(0U, 38U, buf, OLED_SIZE_8, 0U);
+
+    Str_Set(buf, "MOTOR: ");
+    Str_Add(buf, Work_StateName(Work_GetState()));
+    OLED_ShowString(0U, 48U, buf, OLED_SIZE_8, 0U);
+
+    OLED_Refresh();
+}
+
 /*------------------------- 按键处理 -------------------------*/
 static void Menu_Enter(void)
 {
@@ -1343,8 +1479,45 @@ void Menu_Init(void)
     s_dirty = 1U;
 }
 
+/* 非设置模式时只同步按键历史，避免切回设置模式时误触发 */
+static void Menu_SyncKeys(void)
+{
+    s_key_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
+    s_key_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
+    s_key_prev[2] = DI_IsHigh(MENU_KEY_C_CH);
+
+    if (s_key_prev[2] != 0U)
+    {
+        s_key_c_tick = HAL_GetTick();
+    }
+}
+
 void Menu_Task(void)
 {
+    uint8_t mode = g_cfg.work_mode;
+
+    /* 切换挡位：进入设置模式时强制重画；其它模式只同步按键状态 */
+    if (mode != s_draw_mode)
+    {
+        s_draw_mode = mode;
+        Menu_SyncKeys();
+        if (mode == WORK_MODE_SET)
+        {
+            s_dirty = 1U;
+        }
+    }
+
+    /* 工作/调试模式：显示状态页，按键由 Work_KeyTask 处理 */
+    if (mode != WORK_MODE_SET)
+    {
+        if ((HAL_GetTick() - s_work_tick) >= 200U)
+        {
+            s_work_tick = HAL_GetTick();
+            Menu_DrawWork();
+        }
+        return;
+    }
+
     Menu_KeyScan();
 
     if (s_dirty == 0U)

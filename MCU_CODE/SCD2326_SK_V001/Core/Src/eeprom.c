@@ -216,6 +216,9 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.echo_enable = g_cfg.echo_enable;
     cfg.status_print_enable = g_cfg.status_print_enable;
     cfg.sensor_type = g_cfg.sensor_type;
+    cfg.shot_enable = g_cfg.shot_enable;
+    cfg.load_total = g_cfg.load_total;
+    cfg.shot_count = g_cfg.shot_count;
     cfg.baudrate = g_cfg.baudrate;
     cfg.check = 0U;
 
@@ -263,6 +266,9 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
     g_cfg.echo_enable = cfg.echo_enable;
     g_cfg.status_print_enable = cfg.status_print_enable;
     g_cfg.sensor_type = (cfg.sensor_type == 1U) ? 1U : 0U;
+    g_cfg.shot_enable = (cfg.shot_enable != 0U) ? 1U : 0U;
+    g_cfg.load_total = (cfg.load_total > 999U) ? 999U : cfg.load_total;
+    g_cfg.shot_count = (cfg.shot_count > 999U) ? 999U : cfg.shot_count;
     g_cfg.baudrate = cfg.baudrate;
 
     return HAL_OK;

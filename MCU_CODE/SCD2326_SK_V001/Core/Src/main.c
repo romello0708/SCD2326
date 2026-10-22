@@ -37,6 +37,7 @@
 #include "menu.h"
 #include "eeprom.h"
 #include "relay.h"
+#include "work.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -120,6 +121,7 @@ int main(void)
     Comm_SetBaud(g_cfg.baudrate);   /* 应用 EEPROM 中保存的波特率 */
   }
   DI_Init();      /* 10 路数字输入扫描初始化 */
+  Work_Init();    /* 工作/调试模式动作初始化：电机停止、射击输出拉低 */
   OLED_Init();    /* OLED 上电时序与显示配置 */
   Menu_Init();    /* 三级菜单初始化 */
   /* USER CODE END 2 */
@@ -133,6 +135,8 @@ int main(void)
     /* USER CODE BEGIN 3 */
     Motor_Task();   /* 1ms 周期：加减速曲线、换向死区、PWM 输出 */
     AD_Task();      /* 1ms 周期：电流采样、中值滤波、换算 */
+    Work_Task();    /* 1ms 周期：装填/拉栓/复位到位、超时、堵转、余弹计数 */
+    Work_KeyTask(); /* 按键动作：工作模式装填/射击，调试模式拉栓/复位/射击 */
     Comm_Task();    /* 串口回传测试：收到的帧原样发回 */
     Comm_StatusTask(); /* 500ms 打印一次 10 路输入状态与工作模式 */
     DI_Task();      /* 1ms 周期：10 路输入扫描与去抖 */

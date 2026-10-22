@@ -42,6 +42,7 @@ extern Motor_t motor;
 void Motor_Init(void);
 void Motor_SetState(uint8_t state);
 void Motor_SetDutyPercent(uint8_t percent);
+void Motor_EmergencyStop(void);   /* 立即全关（到位/松开/过流保护） */
 void Motor_Task(void);
 
 #ifdef __cplusplus
