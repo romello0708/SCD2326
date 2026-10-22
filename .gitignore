@@ -1,0 +1,38 @@
+# ---------- Keil / MDK 编译输出 ----------
+MCU_CODE/SCD2326_SK_V001/MDK-ARM/SCD2326_SK_V001/
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.map
+*.lnp
+*.dep
+*.build_log.htm
+*.htm
+*.sct.bak
+
+# ---------- Keil 用户界面配置（窗口布局，因人而异） ----------
+*.uvguix.*
+*.uvgui.*
+*.bak
+
+# ---------- VS Code 插件日志 ----------
+MDK-ARM/.vscode/keil-assistant.log
+MDK-ARM/.vscode/uv4.log
+MDK-ARM/.vscode/uv4.log.lock
+
+# ---------- 源码压缩备份 ----------
+MCU_CODE/*.rar
+MCU_CODE/*.zip
+
+# ---------- Altium 可再生成内容 ----------
+__Previews/
+History/
+Project Outputs for */
+*.PrjPcbStructure
+
+# ---------- 系统文件 ----------
+Thumbs.db
+desktop.ini
+.DS_Store
