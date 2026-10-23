@@ -8,7 +8,7 @@ extern "C" {
 #include "main.h"
 
 /* 屏幕：中景园 ZJY_M242_OLED（2.42 寸 128x64，SSD1309）
- * 接口：SPI 半双工（1-line），SCK=PB13 MOSI=PB15 CS=PB12 DC=PA11 RES=PA10 */
+ * 接口：SPI2 两线模式（只用到 MOSI 发送），SCK=PB13 MOSI=PB15 CS=PB12 DC=PA11 RES=PA10 */
 #define OLED_WIDTH        128U
 #define OLED_HEIGHT       64U
 #define OLED_PAGES        (OLED_HEIGHT / 8U)

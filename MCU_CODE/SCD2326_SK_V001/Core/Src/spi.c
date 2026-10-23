@@ -39,12 +39,12 @@ void MX_SPI2_Init(void)
   /* USER CODE END SPI2_Init 1 */
   hspi2.Instance = SPI2;
   hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_1LINE;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
   hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;   /* 36MHz/8 = 4.5MHz，适配 OLED 排线 */
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  /* 36MHz/16 = 2.25MHz，与原厂程序一致 */
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

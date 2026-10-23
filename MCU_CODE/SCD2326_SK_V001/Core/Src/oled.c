@@ -1,5 +1,5 @@
-/* OLED 驱动（SSD1309，128x64，SPI 半双工）
- * 硬件：SPI2 单线发送，PB13=SCK PB15=MOSI，PB12=CS（软件片选），PA11=DC，PA10=RES
+/* OLED 驱动（SSD1309，128x64，SPI）
+ * 硬件：SPI2 两线模式，仅用 MOSI 发送，PB13=SCK PB15=MOSI，PB12=CS（软件片选），PA11=DC，PA10=RES
  * 说明：GRAM 先画在内存，再整屏刷新，避免逐字节刷屏造成的撕裂和慢速。
  */
 #include "oled.h"
