@@ -55,30 +55,26 @@ static uint32_t s_rep_tick;       /* 连加上次触发时刻 */
 static uint32_t s_refresh_tick;   /* 运行页刷新计时 */
 
 /*------------------------- 字符串工具 -------------------------*/
-static void Str_Set(char *dst, const char *src)
+/* UTF-8 字符串像素宽度：ASCII 6px，汉字 16px（与 OLED_ShowUTF8 一致） */
+static uint8_t Utf8Width(const char *str)
 {
-    while (*src != '\0')
-    {
-        *dst = *src;
-        dst++;
-        src++;
-    }
-    *dst = '\0';
-}
+    uint8_t w = 0U;
 
-static void Str_Add(char *dst, const char *src)
-{
-    while (*dst != '\0')
+    while (*str != '\0')
     {
-        dst++;
+        if ((uint8_t)*str < 0x80U)
+        {
+            w = (uint8_t)(w + 6U);
+            str++;
+        }
+        else
+        {
+            w = (uint8_t)(w + 16U);
+            str += 3;
+        }
     }
-    while (*src != '\0')
-    {
-        *dst = *src;
-        dst++;
-        src++;
-    }
-    *dst = '\0';
+
+    return w;
 }
 
 /* 8x16 数字，不带前导零 */
@@ -224,35 +220,38 @@ static void Menu_SetKeys(uint32_t now)
 }
 
 /*------------------------- 工作 / 调试模式 -------------------------*/
-static void Menu_BuildTitle(char *title, uint8_t mode)
-{
-    if (mode == WORK_MODE_WORK)
-    {
-        Str_Set(title, "工作模式");
-    }
-    else if (mode == WORK_MODE_DEBUG)
-    {
-        Str_Set(title, "调试模式");
-    }
-    else
-    {
-        Str_Set(title, "模式异常");
-        return;
-    }
-
-    Str_Add(title, s_module_name[g_cfg.module_type]);
-}
-
 static void Menu_DrawRun(uint8_t mode)
 {
-    char title[32];
+    const char *mode_name;
+    const char *module_name;
+    uint8_t w;
     uint8_t st;
     const char *state_name;
 
-    Menu_BuildTitle(title, mode);
+    if (mode == WORK_MODE_WORK)
+    {
+        mode_name = "工作模式";
+    }
+    else if (mode == WORK_MODE_DEBUG)
+    {
+        mode_name = "调试模式";
+    }
+    else
+    {
+        mode_name = "模式异常";
+    }
 
     OLED_Clear();
-    OLED_ShowUTF8(0U, SET_TITLE_Y, title, 0U);
+
+    /* 标题：左侧挡位，右侧模块型号靠右对齐 */
+    OLED_ShowUTF8(0U, SET_TITLE_Y, mode_name, 0U);
+
+    if (mode != WORK_MODE_INVALID)
+    {
+        module_name = s_module_name[g_cfg.module_type];
+        w = Utf8Width(module_name);
+        OLED_ShowUTF8((uint8_t)(OLED_WIDTH - w), SET_TITLE_Y, module_name, 0U);
+    }
 
     /* 余弹数（三挡都显示） */
     OLED_ShowUTF8(0U, SET_ROW1_Y, "余弹数", 0U);
