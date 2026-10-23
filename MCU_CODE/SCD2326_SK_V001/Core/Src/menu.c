@@ -175,6 +175,15 @@ static void Menu_Adjust(int16_t dir)
 
     s_dirty = 1U;
     s_cfg_dirty = 1U;
+
+    /* 传感器类型改完立即保存，避免停在设置模式时掉电丢失 */
+    if ((s_sel == SET_ITEM_SENSOR1) || (s_sel == SET_ITEM_SENSOR2))
+    {
+        if (EEPROM_SaveConfig() == HAL_OK)
+        {
+            s_cfg_dirty = 0U;
+        }
+    }
 }
 
 /* 绘制一个设置项，y 为该行起始行像素 */
