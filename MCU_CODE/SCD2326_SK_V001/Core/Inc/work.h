@@ -36,6 +36,9 @@ extern "C" {
 #define WORK_KEY_REPEAT_DELAY_MS 500U
 #define WORK_KEY_REPEAT_MS       100U
 
+/* 调试模式长按启动判定时间 */
+#define WORK_HOLD_MS             300U
+
 /* 保护 */
 #define WORK_LOAD_TIMEOUT_MS     5000U  /* 装填最长运行时间 */
 #define WORK_MOVE_TIMEOUT_MS     5000U  /* 拉栓/复位最长运行时间 */

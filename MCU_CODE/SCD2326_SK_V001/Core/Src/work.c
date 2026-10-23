@@ -7,9 +7,10 @@
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
  *
  * 调试模式（拨动开关下挡）：
- *   A 长按 = 拉栓：电机向后运行到初始到位(IN_9)，松开立即停止
- *   B 长按 = 复位：电机向前运行到到位位置(IN_10)，松开立即停止
- *   C 长按 = 射击：MCU_OUT1 连续输出，松开立即停止（不受射击模式限制）
+ *   A 长按(>=300ms) = 拉栓：电机向后运行到初始到位(IN_9)，松开立即停止
+ *   B 长按(>=300ms) = 复位：电机向前运行到到位位置(IN_10)，松开立即停止
+ *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止，
+ *                     余弹同样逐发递减；各动作之间保持安全互斥
  *
  * 射击模式：
  *   无限制：按住连发，不检查、不扣减余弹
@@ -34,6 +35,8 @@ static uint32_t s_fire_tick;      /* 当前脉宽/间隔起点 */
 static uint16_t s_stall_ms;       /* 电流超阈值持续时间 */
 static uint16_t s_last_cnt;       /* IN_7 上升沿计数上次值 */
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
+static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
+static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -133,6 +136,13 @@ void Work_Init(void)
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
     s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
     s_prev[2] = DI_IsHigh(MENU_KEY_C_CH);
+
+    s_hold_tick[0] = s_tick;
+    s_hold_tick[1] = s_tick;
+    s_hold_tick[2] = s_tick;
+    s_hold_act[0]  = 0U;
+    s_hold_act[1]  = 0U;
+    s_hold_act[2]  = 0U;
 }
 
 void Work_Abort(void)
@@ -350,43 +360,84 @@ void Work_KeyTask(void)
     }
     else if (g_cfg.work_mode == WORK_MODE_DEBUG)
     {
-        /* 拉栓：按住向后运行，松开停止 */
-        if ((kA != 0U) && (s_prev[0] == 0U))
+        uint32_t now = HAL_GetTick();
+
+        /* 拉栓：长按 300ms 启动，松开立即停止 */
+        if (kA != 0U)
         {
-            Work_StartMotion(WORK_ST_BOLT, WORK_DIR_BOLT);
+            if (s_prev[0] == 0U)
+            {
+                s_hold_tick[0] = now;
+                s_hold_act[0]  = 0U;
+            }
+            if ((s_hold_act[0] == 0U) && ((now - s_hold_tick[0]) >= WORK_HOLD_MS))
+            {
+                s_hold_act[0] = 1U;
+                if (s_state == WORK_ST_IDLE)
+                {
+                    Work_StartMotion(WORK_ST_BOLT, WORK_DIR_BOLT);
+                }
+            }
         }
-        else if ((kA == 0U) && (s_prev[0] != 0U))
+        else
         {
-            if (s_state == WORK_ST_BOLT)
+            s_hold_act[0] = 0U;
+            if ((s_prev[0] != 0U) && (s_state == WORK_ST_BOLT))
             {
                 Work_StopMotion();
             }
         }
 
-        /* 复位：按住向前运行，松开停止（A 优先） */
-        if ((kB != 0U) && (s_prev[1] == 0U) && (kA == 0U))
+        /* 复位：长按 300ms 启动，松开立即停止（A 优先） */
+        if ((kB != 0U) && (kA == 0U))
         {
-            Work_StartMotion(WORK_ST_RESET, WORK_DIR_RESET);
+            if (s_prev[1] == 0U)
+            {
+                s_hold_tick[1] = now;
+                s_hold_act[1]  = 0U;
+            }
+            if ((s_hold_act[1] == 0U) && ((now - s_hold_tick[1]) >= WORK_HOLD_MS))
+            {
+                s_hold_act[1] = 1U;
+                if (s_state == WORK_ST_IDLE)
+                {
+                    Work_StartMotion(WORK_ST_RESET, WORK_DIR_RESET);
+                }
+            }
         }
-        else if ((kB == 0U) && (s_prev[1] != 0U))
+        else
         {
-            if (s_state == WORK_ST_RESET)
+            s_hold_act[1] = 0U;
+            if ((s_prev[1] != 0U) && (s_state == WORK_ST_RESET))
             {
                 Work_StopMotion();
             }
         }
 
-        /* 射击：按住连续输出，松开停止；调试模式不受射击模式与余弹限制 */
-        if ((kC != 0U) && (s_prev[2] == 0U))
+        /* 射击：长按 300ms 启动，按固定时序连续击发并扣减余弹，松开立即停止 */
+        if (kC != 0U)
         {
-            if (s_state == WORK_ST_IDLE)
+            if (s_prev[2] == 0U)
             {
-                Work_FireStart(WORK_FIRE_CONTINUOUS, 1U);
+                s_hold_tick[2] = now;
+                s_hold_act[2]  = 0U;
+            }
+            if ((s_hold_act[2] == 0U) && ((now - s_hold_tick[2]) >= WORK_HOLD_MS))
+            {
+                s_hold_act[2] = 1U;
+                if (s_state == WORK_ST_IDLE)
+                {
+                    Work_FireStart(WORK_FIRE_CONTINUOUS, 0U);
+                }
             }
         }
-        else if ((kC == 0U) && (s_prev[2] != 0U))
+        else
         {
-            Work_FireStop();
+            s_hold_act[2] = 0U;
+            if (s_prev[2] != 0U)
+            {
+                Work_FireStop();
+            }
         }
     }
 
