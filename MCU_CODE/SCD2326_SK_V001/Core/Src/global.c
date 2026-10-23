@@ -21,9 +21,10 @@ void Global_Init(void)
 
     g_cfg.work_mode = WORK_MODE_WORK;
     g_cfg.sensor_type = SENSOR_TYPE_NPN;
-    g_cfg.shot_enable = 1U;
-    g_cfg.load_total = 0U;
-    g_cfg.shot_count = 0U;
+    g_cfg.ammo = 0U;
+    g_cfg.fire_mode = FIRE_MODE_SINGLE;
+    g_cfg.module_type = MODULE_FIRE;
+    g_cfg.shot_total = 0U;
     g_cfg.motor_duty_pct = 90U;
     g_cfg.over_current_a = 20U;
     g_cfg.echo_enable = 1U;

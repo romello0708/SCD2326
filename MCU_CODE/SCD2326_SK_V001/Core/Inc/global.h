@@ -11,7 +11,7 @@ extern "C" {
 /* 系统信息宏定义                                                              */
 /*============================================================================*/
 #define SW_VERSION_MAJOR      0U
-#define SW_VERSION_MINOR      2U
+#define SW_VERSION_MINOR      3U
 #define SW_VERSION_BUILD      0U
 
 #define BOARD_NAME            "SCD2326"
@@ -56,6 +56,28 @@ extern "C" {
 #define WORK_MODE_DEBUG       2U    /* 调试模式 */
 #define WORK_MODE_INVALID     3U    /* 拨动开关两路同时为高（异常） */
 
+/* 射击模式（设置模式可调，工作模式生效） */
+#define FIRE_MODE_UNLIMITED   0U    /* 无限制：按住连发，不受余弹限制 */
+#define FIRE_MODE_AUTO        1U    /* 连射：按住连发，受余弹限制 */
+#define FIRE_MODE_LONG_BURST  2U    /* 长点射：每按一次 6 发 */
+#define FIRE_MODE_BURST       3U    /* 点射：每按一次 3 发 */
+#define FIRE_MODE_SINGLE      4U    /* 单发：每按一次 1 发 */
+#define FIRE_MODE_NUM         5U
+
+/* 模块型号（设置模式可调，显示在各模式标题栏） */
+#define MODULE_FIRE           0U    /* 火力模块 */
+#define MODULE_SCOUT          1U    /* 侦打车 */
+#define MODULE_CAR_C          2U    /* C 车 */
+#define MODULE_CAR_B          3U    /* B 车 */
+#define MODULE_CAR_A          4U    /* A 车 */
+#define MODULE_8X8            5U    /* 8*8 */
+#define MODULE_NUM            6U
+
+/* 余弹数范围 */
+#define AMMO_MIN              0U
+#define AMMO_MAX              200U
+#define AMMO_STEP             1U
+
 /*============================================================================*/
 /* 串口状态打印                                                                */
 /*============================================================================*/
@@ -78,9 +100,10 @@ typedef struct
     uint8_t  sensor_type;
 
     /* 工作/调试模式 */
-    uint8_t  shot_enable;           /* 1 = 允许射击，0 = 禁止 */
-    uint16_t load_total;            /* 装填计数（IN_7 上升沿累加） */
-    uint16_t shot_count;            /* 射击次数（余弹 = load_total - shot_count） */
+    uint16_t ammo;                  /* 余弹数 0~200，设置模式可装定，射击递减 */
+    uint8_t  fire_mode;             /* 射击模式 FIRE_MODE_* */
+    uint8_t  module_type;           /* 模块型号 MODULE_* */
+    uint16_t shot_total;            /* 累计射击次数（仅统计） */
 
     /* 电机 */
     uint8_t  motor_duty_pct;        /* 电机默认占空比 % */
