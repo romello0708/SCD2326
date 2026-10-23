@@ -16,7 +16,7 @@ extern "C" {
 
 #define EEPROM_CFG_ADDR        0x0000U    /* 系统配置区 */
 #define EEPROM_TEST_ADDR       0x3F00U    /* 自检区（最后一个页区） */
-#define EEPROM_CFG_MAGIC       0x5AA8U
+#define EEPROM_CFG_MAGIC       0x5AA9U    /* 结构变更时递增，旧数据自动失效 */
 
 /* 掉电保存的系统配置（字段顺序已按对齐排布，避免填充字节影响校验和） */
 typedef struct
@@ -27,7 +27,8 @@ typedef struct
     uint8_t  over_current_a;
     uint8_t  echo_enable;
     uint8_t  status_print_enable;
-    uint8_t  sensor_type;                  /* 0 = NPN，1 = PNP */
+    uint8_t  sensor1_type;                 /* 传感器1：0 = NPN，1 = PNP */
+    uint8_t  sensor2_type;                 /* 传感器2：0 = NPN，1 = PNP */
     uint8_t  fire_mode;                    /* 射击模式 FIRE_MODE_* */
     uint8_t  module_type;                  /* 模块型号 MODULE_* */
     uint16_t ammo;                         /* 余弹数 0~200 */

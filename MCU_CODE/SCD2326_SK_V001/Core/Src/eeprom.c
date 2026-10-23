@@ -215,7 +215,8 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.over_current_a = g_cfg.over_current_a;
     cfg.echo_enable = g_cfg.echo_enable;
     cfg.status_print_enable = g_cfg.status_print_enable;
-    cfg.sensor_type = g_cfg.sensor_type;
+    cfg.sensor1_type = g_cfg.sensor1_type;
+    cfg.sensor2_type = g_cfg.sensor2_type;
     cfg.fire_mode = g_cfg.fire_mode;
     cfg.module_type = g_cfg.module_type;
     cfg.ammo = g_cfg.ammo;
@@ -266,7 +267,8 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
     g_cfg.over_current_a = cfg.over_current_a;
     g_cfg.echo_enable = cfg.echo_enable;
     g_cfg.status_print_enable = cfg.status_print_enable;
-    g_cfg.sensor_type = (cfg.sensor_type == 1U) ? 1U : 0U;
+    g_cfg.sensor1_type = (cfg.sensor1_type == 1U) ? 1U : 0U;
+    g_cfg.sensor2_type = (cfg.sensor2_type == 1U) ? 1U : 0U;
     g_cfg.fire_mode = (cfg.fire_mode < FIRE_MODE_NUM) ? cfg.fire_mode : FIRE_MODE_SINGLE;
     g_cfg.module_type = (cfg.module_type < MODULE_NUM) ? cfg.module_type : MODULE_FIRE;
     g_cfg.ammo = (cfg.ammo > AMMO_MAX) ? AMMO_MAX : cfg.ammo;

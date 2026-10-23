@@ -20,7 +20,8 @@ void Global_Init(void)
     }
 
     g_cfg.work_mode = WORK_MODE_WORK;
-    g_cfg.sensor_type = SENSOR_TYPE_NPN;
+    g_cfg.sensor1_type = SENSOR_TYPE_NPN;
+    g_cfg.sensor2_type = SENSOR_TYPE_NPN;
     g_cfg.ammo = 0U;
     g_cfg.fire_mode = FIRE_MODE_SINGLE;
     g_cfg.module_type = MODULE_FIRE;

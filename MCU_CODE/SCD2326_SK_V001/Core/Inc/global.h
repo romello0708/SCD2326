@@ -96,8 +96,9 @@ typedef struct
     /* 工作模式（由拨动开关 IN_2 / IN_3 解码） */
     uint8_t  work_mode;
 
-    /* 传感器类型（两路继电器切换 IN7~IN10 的 NPN / PNP 通道） */
-    uint8_t  sensor_type;
+    /* 传感器类型（两路继电器分别配置：高电平 = NPN，低电平 = PNP） */
+    uint8_t  sensor1_type;          /* 传感器1：SENSOR_TYPE_NPN / SENSOR_TYPE_PNP */
+    uint8_t  sensor2_type;          /* 传感器2：SENSOR_TYPE_NPN / SENSOR_TYPE_PNP */
 
     /* 工作/调试模式 */
     uint16_t ammo;                  /* 余弹数 0~200，设置模式可装定，射击递减 */

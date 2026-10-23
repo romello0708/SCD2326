@@ -3,7 +3,8 @@
  * 设置模式（拨动开关上挡）：
  *   A = 向上切换设置项 / 增大数值     B = 向下切换设置项 / 减小数值
  *   C = 进入 / 退出调节；退出时自动保存到 EEPROM
- *   设置项：余弹数（0~200）、射击模式、模块型号
+ *   标题行固定，下面三行循环显示设置项：
+ *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型
  *
  * 工作模式（中挡）：显示余弹数、射击模式、工作状态（未装填/装填中/射击中）
  * 调试模式（下挡）：显示余弹数、初始到位信号、到位位置信号
@@ -16,20 +17,25 @@
 #include "global.h"
 #include "work.h"
 #include "eeprom.h"
+#include "relay.h"
 
 /* 设置页行坐标 */
 #define SET_TITLE_Y      0U
 #define SET_ROW1_Y       16U
 #define SET_ROW2_Y       32U
 #define SET_ROW3_Y       48U
+#define SET_ROW_NUM      3U      /* 标题下方可见行数，其余行滚动显示 */
 #define SET_VALUE_X      64U
+#define SET_SENSOR_X     96U     /* 传感器类型行文字较长，数值右移 */
 #define DGB_VALUE_X      96U
 
 /* 设置项 */
 #define SET_ITEM_AMMO    0U
 #define SET_ITEM_FIRE    1U
 #define SET_ITEM_MODULE  2U
-#define SET_ITEM_NUM     3U
+#define SET_ITEM_SENSOR1 3U
+#define SET_ITEM_SENSOR2 4U
+#define SET_ITEM_NUM     5U
 
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
@@ -44,8 +50,14 @@ static const char * const s_module_name[MODULE_NUM] =
     "火力模块", "侦打车", "C车", "B车", "A车", "8*8"
 };
 
+static const char * const s_sensor_name[SENSOR_TYPE_NUM] =
+{
+    "NPN", "PNP"
+};
+
 static uint8_t  s_mode = 0xFFU;   /* 上次绘制的挡位 */
 static uint8_t  s_sel;            /* 设置项选中位置 */
+static uint8_t  s_top;            /* 设置页滚动窗口首项 */
 static uint8_t  s_edit;           /* 1 = 正在调节数值 */
 static uint8_t  s_dirty;          /* 1 = 需要重绘 */
 static uint8_t  s_cfg_dirty;      /* 1 = 配置已改，需写 EEPROM */
@@ -93,17 +105,32 @@ static void ShowNum(uint8_t x, uint8_t y, uint16_t v, uint8_t mode)
 }
 
 /*------------------------- 设置模式 -------------------------*/
+/* 列表态：切换设置项，并保证选中项落在可见窗口内 */
+static void Menu_SelectMove(int16_t dir)
+{
+    int16_t idx = (int16_t)s_sel + dir;
+
+    if (idx < 0) { idx = (int16_t)SET_ITEM_NUM - 1; }
+    if (idx >= (int16_t)SET_ITEM_NUM) { idx = 0; }
+    s_sel = (uint8_t)idx;
+
+    if (s_sel < s_top)
+    {
+        s_top = s_sel;
+    }
+    else if (s_sel >= (uint8_t)(s_top + SET_ROW_NUM))
+    {
+        s_top = (uint8_t)(s_sel - SET_ROW_NUM + 1U);
+    }
+}
+
 static void Menu_Adjust(int16_t dir)
 {
     int16_t idx;
 
     if (s_edit == 0U)
     {
-        /* 列表态：切换设置项 */
-        idx = (int16_t)s_sel + dir;
-        if (idx < 0) { idx = (int16_t)SET_ITEM_NUM - 1; }
-        if (idx >= (int16_t)SET_ITEM_NUM) { idx = 0; }
-        s_sel = (uint8_t)idx;
+        Menu_SelectMove(dir);
         s_dirty = 1U;
         return;
     }
@@ -124,11 +151,25 @@ static void Menu_Adjust(int16_t dir)
             g_cfg.fire_mode = (uint8_t)idx;
             break;
 
-        default:
+        case SET_ITEM_MODULE:
             idx = (int16_t)g_cfg.module_type + dir;
             if (idx < 0) { idx = (int16_t)MODULE_NUM - 1; }
             if (idx >= (int16_t)MODULE_NUM) { idx = 0; }
             g_cfg.module_type = (uint8_t)idx;
+            break;
+
+        case SET_ITEM_SENSOR1:
+            idx = (int16_t)g_cfg.sensor1_type + dir;
+            if (idx < 0) { idx = (int16_t)SENSOR_TYPE_NUM - 1; }
+            if (idx >= (int16_t)SENSOR_TYPE_NUM) { idx = 0; }
+            Relay_SetType(1U, (uint8_t)idx);       /* 立即作用于继电器 */
+            break;
+
+        default:                                   /* 传感器2类型 */
+            idx = (int16_t)g_cfg.sensor2_type + dir;
+            if (idx < 0) { idx = (int16_t)SENSOR_TYPE_NUM - 1; }
+            if (idx >= (int16_t)SENSOR_TYPE_NUM) { idx = 0; }
+            Relay_SetType(2U, (uint8_t)idx);       /* 立即作用于继电器 */
             break;
     }
 
@@ -136,24 +177,55 @@ static void Menu_Adjust(int16_t dir)
     s_cfg_dirty = 1U;
 }
 
+/* 绘制一个设置项，y 为该行起始行像素 */
+static void Menu_DrawSetItem(uint8_t item, uint8_t y)
+{
+    uint8_t hl   = (item == s_sel) ? 1U : 0U;
+    uint8_t edit = (uint8_t)(hl & s_edit);
+
+    switch (item)
+    {
+        case SET_ITEM_AMMO:
+            OLED_ShowUTF8(0U, y, "余弹数", hl);
+            ShowNum(SET_VALUE_X, y, Work_GetAmmo(), edit);
+            break;
+
+        case SET_ITEM_FIRE:
+            OLED_ShowUTF8(0U, y, "射击模式", hl);
+            OLED_ShowUTF8(SET_VALUE_X, y, s_fire_name[g_cfg.fire_mode], edit);
+            break;
+
+        case SET_ITEM_MODULE:
+            OLED_ShowUTF8(0U, y, "模块型号", hl);
+            OLED_ShowUTF8(SET_VALUE_X, y, s_module_name[g_cfg.module_type], edit);
+            break;
+
+        case SET_ITEM_SENSOR1:
+            OLED_ShowUTF8(0U, y, "传感器1类型", hl);
+            OLED_ShowUTF8(SET_SENSOR_X, y, s_sensor_name[g_cfg.sensor1_type], edit);
+            break;
+
+        default:
+            OLED_ShowUTF8(0U, y, "传感器2类型", hl);
+            OLED_ShowUTF8(SET_SENSOR_X, y, s_sensor_name[g_cfg.sensor2_type], edit);
+            break;
+    }
+}
+
 static void Menu_DrawSet(void)
 {
-    uint8_t hl;
+    uint8_t i;
+    uint8_t item;
 
     OLED_Clear();
-    OLED_ShowUTF8(0U, SET_TITLE_Y, "设置模式", 0U);
+    OLED_ShowUTF8(0U, SET_TITLE_Y, "设置模式", 0U);   /* 标题行固定 */
 
-    hl = (s_sel == SET_ITEM_AMMO) ? 1U : 0U;
-    OLED_ShowUTF8(0U, SET_ROW1_Y, "余弹数", hl);
-    ShowNum(SET_VALUE_X, SET_ROW1_Y, Work_GetAmmo(), (uint8_t)(hl & s_edit));
-
-    hl = (s_sel == SET_ITEM_FIRE) ? 1U : 0U;
-    OLED_ShowUTF8(0U, SET_ROW2_Y, "射击模式", hl);
-    OLED_ShowUTF8(SET_VALUE_X, SET_ROW2_Y, s_fire_name[g_cfg.fire_mode], (uint8_t)(hl & s_edit));
-
-    hl = (s_sel == SET_ITEM_MODULE) ? 1U : 0U;
-    OLED_ShowUTF8(0U, SET_ROW3_Y, "模块型号", hl);
-    OLED_ShowUTF8(SET_VALUE_X, SET_ROW3_Y, s_module_name[g_cfg.module_type], (uint8_t)(hl & s_edit));
+    /* 标题下方三行循环显示设置项 */
+    for (i = 0U; i < SET_ROW_NUM; i++)
+    {
+        item = (uint8_t)((s_top + i) % SET_ITEM_NUM);
+        Menu_DrawSetItem(item, (uint8_t)(SET_ROW1_Y + (i * 16U)));
+    }
 
     OLED_Refresh();
 }
@@ -298,6 +370,7 @@ void Menu_Init(void)
 {
     s_mode         = 0xFFU;
     s_sel          = SET_ITEM_AMMO;
+    s_top          = 0U;
     s_edit         = 0U;
     s_dirty        = 1U;
     s_cfg_dirty    = 0U;
@@ -326,6 +399,7 @@ void Menu_Task(void)
 
         s_mode = mode;
         s_edit = 0U;
+        s_top  = (s_sel >= SET_ROW_NUM) ? (uint8_t)(s_sel - SET_ROW_NUM + 1U) : 0U;
         s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
         s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
         s_prev[2] = DI_IsHigh(MENU_KEY_C_CH);
