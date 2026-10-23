@@ -85,6 +85,16 @@ static uint8_t Work_FireReady(void)
     return (g_cfg.ammo > AMMO_MIN) ? 1U : 0U;
 }
 
+/* 是否允许启动新动作：空闲，或上一次动作异常结束（超时/过流） */
+static uint8_t Work_CanStart(void)
+{
+    if ((s_state == WORK_ST_IDLE) || (s_state == WORK_ST_TIMEOUT) || (s_state == WORK_ST_OVER_CUR))
+    {
+        return 1U;
+    }
+    return 0U;
+}
+
 /* 打出一发：拉高输出、扣余弹、计数 */
 static void Work_FirePulse(void)
 {
@@ -147,6 +157,9 @@ void Work_Init(void)
 
 void Work_Abort(void)
 {
+    uint32_t now = HAL_GetTick();
+    uint8_t  key[3];
+
     Work_FireOff();
     Motor_EmergencyStop();
 
@@ -154,6 +167,22 @@ void Work_Abort(void)
     s_fire_left  = 0U;
     s_stall_ms   = 0U;
     s_state      = WORK_ST_IDLE;
+
+    /* 切挡时同步按键快照：仍按住的键视为已触发，松开后才能再次启动 */
+    key[0] = DI_IsHigh(MENU_KEY_A_CH);
+    key[1] = DI_IsHigh(MENU_KEY_B_CH);
+    key[2] = DI_IsHigh(MENU_KEY_C_CH);
+
+    s_prev[0] = key[0];
+    s_prev[1] = key[1];
+    s_prev[2] = key[2];
+
+    s_hold_tick[0] = now;
+    s_hold_tick[1] = now;
+    s_hold_tick[2] = now;
+    s_hold_act[0]  = key[0];
+    s_hold_act[1]  = key[1];
+    s_hold_act[2]  = key[2];
 }
 
 /*--------------------- 动作启动 ---------------------*/
@@ -318,7 +347,7 @@ void Work_KeyTask(void)
         /* 装填：按一下自动运行到到位位置 */
         if ((kA != 0U) && (s_prev[0] == 0U))
         {
-            if (s_state == WORK_ST_IDLE)
+            if (Work_CanStart() != 0U)
             {
                 Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
             }
@@ -327,7 +356,7 @@ void Work_KeyTask(void)
         /* 射击：按射击模式发起；连发/无限制需持续按住 */
         if ((kC != 0U) && (s_prev[2] == 0U))
         {
-            if (s_state == WORK_ST_IDLE)      /* 与装填互斥 */
+            if (Work_CanStart() != 0U)        /* 与装填互斥 */
             {
                 switch (g_cfg.fire_mode)
                 {
@@ -373,7 +402,7 @@ void Work_KeyTask(void)
             if ((s_hold_act[0] == 0U) && ((now - s_hold_tick[0]) >= WORK_HOLD_MS))
             {
                 s_hold_act[0] = 1U;
-                if (s_state == WORK_ST_IDLE)
+                if (Work_CanStart() != 0U)
                 {
                     Work_StartMotion(WORK_ST_BOLT, WORK_DIR_BOLT);
                 }
@@ -399,7 +428,7 @@ void Work_KeyTask(void)
             if ((s_hold_act[1] == 0U) && ((now - s_hold_tick[1]) >= WORK_HOLD_MS))
             {
                 s_hold_act[1] = 1U;
-                if (s_state == WORK_ST_IDLE)
+                if (Work_CanStart() != 0U)
                 {
                     Work_StartMotion(WORK_ST_RESET, WORK_DIR_RESET);
                 }
@@ -425,7 +454,7 @@ void Work_KeyTask(void)
             if ((s_hold_act[2] == 0U) && ((now - s_hold_tick[2]) >= WORK_HOLD_MS))
             {
                 s_hold_act[2] = 1U;
-                if (s_state == WORK_ST_IDLE)
+                if (Work_CanStart() != 0U)
                 {
                     Work_FireStart(WORK_FIRE_CONTINUOUS, 0U);
                 }
