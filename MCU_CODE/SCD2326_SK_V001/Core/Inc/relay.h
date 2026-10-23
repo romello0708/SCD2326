@@ -11,13 +11,14 @@ extern "C" {
  * 驱动：PB8=RELAY_1（传感器1）、PB9=RELAY_2（传感器2）
  *       -> R60/R63 3.3K -> S8050(NPN) -> 5V 线圈；高电平 = 三极管导通 = 线圈吸合
  *
- * 电平约定（按现场要求）：控制信号高电平 = NPN，低电平 = PNP
+ * 电平约定（按原理图触点）：低电平 = NPN 通道，高电平 = PNP 通道；
+ *       即不吸合为 NPN，吸合为 PNP
  *
  * 触点（每路为双刀双掷，各带 2 个输入通道）：
  *   RELAY_1：IN7 / IN8      RELAY_2：IN9 / IN10
  */
-#define SENSOR_TYPE_NPN       0U    /* 继电器输出高电平 */
-#define SENSOR_TYPE_PNP       1U    /* 继电器输出低电平 */
+#define SENSOR_TYPE_NPN       0U    /* 继电器输出低电平（不吸合） */
+#define SENSOR_TYPE_PNP       1U    /* 继电器输出高电平（吸合） */
 #define SENSOR_TYPE_NUM       2U
 
 void    Relay_Init(void);                       /* 按 g_cfg 中保存的类型设置两路输出 */

@@ -1,13 +1,13 @@
 /* 传感器类型选择继电器控制
  * 硬件：RELAY_1 = PB8（传感器1），RELAY_2 = PB9（传感器2）
  *       NPN 三极管驱动 5V 线圈，高电平吸合
- * 电平：控制信号高电平 = NPN，低电平 = PNP
+ * 电平：低电平 = NPN（不吸合），高电平 = PNP（吸合），与原理图触点对应
  */
 #include "relay.h"
 #include "global.h"
 
-#define RELAY_LEVEL_NPN       GPIO_PIN_SET      /* 高电平 = NPN */
-#define RELAY_LEVEL_PNP       GPIO_PIN_RESET    /* 低电平 = PNP */
+#define RELAY_LEVEL_NPN       GPIO_PIN_RESET    /* 低电平 = NPN */
+#define RELAY_LEVEL_PNP       GPIO_PIN_SET      /* 高电平 = PNP */
 
 static void Relay_Write(uint8_t ch, GPIO_PinState state)
 {
