@@ -39,6 +39,9 @@ extern "C" {
 /* 调试模式长按启动判定时间 */
 #define WORK_HOLD_MS             300U
 
+/* 余弹掉电保存：动作结束并空闲该时间后写一次 EEPROM */
+#define WORK_AMMO_SAVE_MS        5000U
+
 /* 保护 */
 #define WORK_LOAD_TIMEOUT_MS     5000U  /* 装填最长运行时间 */
 #define WORK_MOVE_TIMEOUT_MS     5000U  /* 拉栓/复位最长运行时间 */

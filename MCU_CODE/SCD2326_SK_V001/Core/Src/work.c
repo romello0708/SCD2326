@@ -26,6 +26,7 @@
 #include "digital_input.h"
 #include "motor.h"
 #include "AnalogQuantityAcquisition.h"
+#include "eeprom.h"
 
 static uint8_t  s_state;          /* WORK_ST_* */
 static uint8_t  s_last_mode;      /* 上次工作模式，用于切挡中止 */
@@ -37,6 +38,8 @@ static uint16_t s_last_cnt;       /* IN_7 上升沿计数上次值 */
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
 static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
 static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
+static uint8_t  s_ammo_dirty;     /* 1 = 余弹有未保存的变化 */
+static uint32_t s_idle_tick;      /* 最近一次非空闲时刻 */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -105,6 +108,7 @@ static void Work_FirePulse(void)
     if (s_fire_unlimit == 0U)
     {
         g_cfg.ammo--;
+        s_ammo_dirty = 1U;
     }
     g_cfg.shot_total++;
     s_state = WORK_ST_FIRE;
@@ -142,6 +146,9 @@ void Work_Init(void)
     s_fire_left    = 0U;
     s_fire_level   = 0U;
     s_fire_unlimit = 0U;
+
+    s_ammo_dirty = 0U;
+    s_idle_tick  = s_tick;
 
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
     s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
@@ -230,6 +237,7 @@ void Work_Task(void)
             uint16_t ammo = (uint16_t)(g_cfg.ammo + add);
 
             g_cfg.ammo = (ammo > AMMO_MAX) ? AMMO_MAX : ammo;
+            s_ammo_dirty = 1U;
         }
         s_last_cnt = cnt;
     }
@@ -332,6 +340,20 @@ void Work_Task(void)
 
         default:
             break;
+    }
+
+    /* 余弹掉电保存：动作结束并空闲 WORK_AMMO_SAVE_MS 后写一次 EEPROM */
+    if (s_state != WORK_ST_IDLE)
+    {
+        s_idle_tick = now;
+    }
+    else if ((s_ammo_dirty != 0U) && ((now - s_idle_tick) >= WORK_AMMO_SAVE_MS))
+    {
+        s_idle_tick = now;              /* 失败则再等一个周期重试，避免频繁阻塞 */
+        if (EEPROM_SaveConfig() == HAL_OK)
+        {
+            s_ammo_dirty = 0U;
+        }
     }
 }
 
