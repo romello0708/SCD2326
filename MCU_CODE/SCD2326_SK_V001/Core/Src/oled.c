@@ -228,6 +228,10 @@ void OLED_Init(void)
     OLED_WriteCmd(0xFD);   /* 解锁命令 */
     OLED_WriteCmd(0x12);
     OLED_WriteCmd(0xAE);   /* 关显示 */
+    OLED_WriteCmd(0x20);   /* 显存寻址方式：页寻址 */
+    OLED_WriteCmd(0x02);
+    OLED_WriteCmd(0x8D);   /* 电荷泵使能（部分模组默认关闭，必须显式打开） */
+    OLED_WriteCmd(0x14);
     OLED_WriteCmd(0xD5);   /* 时钟分频 */
     OLED_WriteCmd(0xA0);
     OLED_WriteCmd(0xA8);   /* 复用率 */
@@ -252,4 +256,25 @@ void OLED_Init(void)
     OLED_Refresh();
 
     OLED_WriteCmd(0xAF);   /* 开显示 */
+
+    /* 上电自检：整屏点亮 500ms，用于确认屏体与 SPI 通路正常 */
+#if (OLED_BOOT_TEST != 0U)
+    {
+        uint8_t page;
+        uint8_t col;
+
+        for (page = 0U; page < OLED_PAGES; page++)
+        {
+            for (col = 0U; col < OLED_WIDTH; col++)
+            {
+                s_gram[page][col] = 0xFFU;
+            }
+        }
+        OLED_Refresh();
+        HAL_Delay(500);
+
+        OLED_Clear();
+        OLED_Refresh();
+    }
+#endif
 }

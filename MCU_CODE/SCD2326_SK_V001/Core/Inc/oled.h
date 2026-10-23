@@ -16,6 +16,9 @@ extern "C" {
 #define OLED_CMD          0U
 #define OLED_DATA         1U
 
+/* 上电自检：1 = 初始化后整屏点亮 500ms（用于确认屏体/连线），量产可置 0 */
+#define OLED_BOOT_TEST    1U
+
 /* 字库尺寸：8 = 6x8 ASCII，16 = 8x16 ASCII；中文固定 16x16 */
 #define OLED_SIZE_8       8U
 #define OLED_SIZE_16      16U
