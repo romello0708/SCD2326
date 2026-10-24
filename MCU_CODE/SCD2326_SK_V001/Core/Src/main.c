@@ -112,17 +112,17 @@ int main(void)
   /* USER CODE BEGIN 2 */
   Global_Init();  /* 全局配置变量初始化 */
   SEGGER_RTT_Init();          /* J-Link RTT 调试通道 */
-  LOG("\r\n[BOOT] %s SW %d.%d.%d\r\n", BOARD_NAME, SW_VERSION_MAJOR, SW_VERSION_MINOR, SW_VERSION_BUILD);
+  LOG("\r\n[启动] %s 软件版本 %d.%d.%d\r\n", BOARD_NAME, SW_VERSION_MAJOR, SW_VERSION_MINOR, SW_VERSION_BUILD);
   (void)EEPROM_Init();        /* 检测 BL24C128A 是否在线 */
   if (EEPROM_LoadConfig() == HAL_OK)
   {
-    LOG("[CFG] eeprom loaded\r\n");
+    LOG("[配置] EEPROM 读取成功\r\n");
   }
   else
   {
-    LOG("[CFG] eeprom invalid, use default\r\n");
+    LOG("[配置] EEPROM 无有效数据，使用默认值\r\n");
   }
-  LOG("[CFG] mode=%d s1=%d s2=%d fire=%d module=%d dir=%d ammo=%d target=%d pulse=%d gap=%d burst=%d lburst=%d\r\n",
+  LOG("[配置] 模式=%d 传感器1=%d 传感器2=%d 射击=%d 模块=%d 方向=%d 余弹=%d 装定=%d 脉宽=%dms 间隔=%dms 点射=%d 长点射=%d\r\n",
       g_cfg.work_mode, g_cfg.sensor1_type, g_cfg.sensor2_type, g_cfg.fire_mode,
       g_cfg.module_type, g_cfg.load_dir, g_cfg.ammo, g_cfg.ammo_target,
       g_cfg.pulse_ms, g_cfg.gap_ms, g_cfg.burst_shots, g_cfg.long_burst_shots);

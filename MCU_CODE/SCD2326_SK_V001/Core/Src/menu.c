@@ -276,19 +276,19 @@ static void Menu_Adjust(int16_t dir)
     s_dirty = 1U;
     s_cfg_dirty = 1U;
     s_save_tick = HAL_GetTick();
-    LOG("[SET] item=%d val=%d\r\n", s_sel, Menu_ItemValue(s_sel));
+    LOG("[设置] 项=%d 值=%d\r\n", s_sel, Menu_ItemValue(s_sel));
 
     /* 传感器类型改完立即保存，避免停在设置模式时掉电丢失 */
     if ((s_sel == SET_ITEM_SENSOR1) || (s_sel == SET_ITEM_SENSOR2))
     {
         if (EEPROM_SaveConfig() == HAL_OK)
         {
-            LOG("[EEPROM] cfg saved\r\n");
+            LOG("[EEPROM] 配置已保存\r\n");
             s_cfg_dirty = 0U;
         }
         else
         {
-            LOG("[EEPROM] save failed\r\n");
+            LOG("[EEPROM] 保存失败\r\n");
         }
     }
 }
@@ -428,12 +428,12 @@ static void Menu_SetKeys(uint32_t now)
             s_edit = 0U;
             if (EEPROM_SaveConfig() == HAL_OK)
             {
-                LOG("[EEPROM] cfg saved\r\n");
+                LOG("[EEPROM] 配置已保存\r\n");
                 s_cfg_dirty = 0U;
             }
             else
             {
-                LOG("[EEPROM] save failed\r\n");
+                LOG("[EEPROM] 保存失败\r\n");
             }
         }
         else
@@ -576,12 +576,12 @@ void Menu_Task(void)
             if (EEPROM_SaveConfig() == HAL_OK)
             {
                 s_cfg_dirty = 0U;
-                LOG("[EEPROM] cfg saved\r\n");
+                LOG("[EEPROM] 配置已保存\r\n");
             }
             else
             {
                 s_save_tick = now;       /* 写失败稍后重试 */
-                LOG("[EEPROM] save failed\r\n");
+                LOG("[EEPROM] 保存失败\r\n");
             }
         }
 
