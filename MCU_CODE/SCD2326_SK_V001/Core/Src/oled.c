@@ -1,7 +1,7 @@
 /* OLED 驱动（SSD1309，128x64，SPI）
  * 硬件：SPI2 两线模式，仅用 MOSI 发送，PB13=SCK PB15=MOSI，PB12=CS（软件片选），PA11=DC，PA10=RES
  * 说明：GRAM 先画在内存，再整屏刷新，避免逐字节刷屏造成的撕裂和慢速。
- *       字库：ASCII 8x13、汉字 13x13。
+ *       字库：ASCII 8x15、汉字 13x13。
  */
 #include "oled.h"
 #include "spi.h"
@@ -119,7 +119,7 @@ static void OLED_Blit(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t 
     }
 }
 
-/* ASCII 字符：8x13 点阵（存储 8x16，最后三行留空） */
+/* ASCII 字符：8x15 点阵（存储 8x16，最后一行留空） */
 void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t mode)
 {
     uint8_t idx;
@@ -130,7 +130,7 @@ void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t mode)
     }
 
     idx = (uint8_t)(chr - ' ');
-    OLED_Blit(x, y, OLED_ASC_WIDTH, 16U, asc2_0813[idx], mode);
+    OLED_Blit(x, y, OLED_ASC_WIDTH, 16U, asc2_0815[idx], mode);
 }
 
 void OLED_ShowString(uint8_t x, uint8_t y, const char *str, uint8_t mode)
