@@ -27,6 +27,7 @@
 #define SET_ROW_STEP     15U
 #define SET_ROW_NUM      3U      /* 标题下方可见行数，其余行滚动显示 */
 #define UI_RIGHT_X       120U    /* 数值右对齐边界，右侧留 8px 余量（与示意图一致） */
+#define AMMO_NUM_UP_PX   3U      /* 余弹数值相对文字行上移的像素数 */
 
 /* 设置项 */
 #define SET_ITEM_AMMO    0U
@@ -102,12 +103,13 @@ static uint8_t NumWidth(uint16_t v)
     return (uint8_t)(len * OLED_ASC_WIDTH);
 }
 
-/* 右对齐显示数字 */
+/* 右对齐显示数字（余弹数值上移 3px） */
 static void ShowNumRight(uint8_t y, uint16_t v, uint8_t mode)
 {
     uint8_t w = NumWidth(v);
+    uint8_t ny = (y >= AMMO_NUM_UP_PX) ? (uint8_t)(y - AMMO_NUM_UP_PX) : 0U;
 
-    OLED_ShowNum((uint8_t)(UI_RIGHT_X - w), y, (uint32_t)v, (uint8_t)(w / OLED_ASC_WIDTH), mode);
+    OLED_ShowNum((uint8_t)(UI_RIGHT_X - w), ny, (uint32_t)v, (uint8_t)(w / OLED_ASC_WIDTH), mode);
 }
 
 /* 右对齐显示文本 */
