@@ -4,7 +4,8 @@
  *   A = 向上切换设置项 / 增大数值     B = 向下切换设置项 / 减小数值
  *   C = 进入 / 退出调节；退出时自动保存到 EEPROM
  *   标题行固定，下面三行循环显示设置项：
- *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型、电机方向
+ *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型、电机方向、
+ *   单发脉冲时长、双发间隔时长、点射用弹数、长点射用弹数
  *
  * 工作模式（中挡）：显示余弹数、射击模式、工作状态（未装填/装填中/射击中）
  * 调试模式（下挡）：显示余弹数、初始到位信号、到位位置信号
@@ -36,7 +37,11 @@
 #define SET_ITEM_SENSOR1 3U
 #define SET_ITEM_SENSOR2 4U
 #define SET_ITEM_DIR     5U     /* 装填电机方向 */
-#define SET_ITEM_NUM     6U
+#define SET_ITEM_PULSE   6U     /* 单发脉冲时长 */
+#define SET_ITEM_GAP     7U     /* 双发间隔时长 */
+#define SET_ITEM_BURST   8U     /* 点射用弹数 */
+#define SET_ITEM_LBURST  9U     /* 长点射用弹数 */
+#define SET_ITEM_NUM     10U
 
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
@@ -208,9 +213,40 @@ static void Menu_Adjust(int16_t dir)
             Relay_SetType(2U, (uint8_t)idx);       /* 立即作用于继电器 */
             break;
 
-        default:                                   /* 装填电机方向 */
+        case SET_ITEM_DIR:                         /* 装填电机方向 */
             g_cfg.load_dir = (g_cfg.load_dir == LOAD_DIR_FORWARD) ?
                              LOAD_DIR_REVERSE : LOAD_DIR_FORWARD;
+            break;
+
+        case SET_ITEM_PULSE:
+            idx = (int16_t)g_cfg.pulse_ms + dir;
+            if (idx < (int16_t)SHOT_PULSE_MIN) { idx = (int16_t)SHOT_PULSE_MIN; }
+            if (idx > (int16_t)SHOT_PULSE_MAX) { idx = (int16_t)SHOT_PULSE_MAX; }
+            g_cfg.pulse_ms = (uint16_t)idx;
+            break;
+
+        case SET_ITEM_GAP:
+            idx = (int16_t)g_cfg.gap_ms + dir;
+            if (idx < (int16_t)SHOT_GAP_MIN) { idx = (int16_t)SHOT_GAP_MIN; }
+            if (idx > (int16_t)SHOT_GAP_MAX) { idx = (int16_t)SHOT_GAP_MAX; }
+            g_cfg.gap_ms = (uint16_t)idx;
+            break;
+
+        case SET_ITEM_BURST:
+            idx = (int16_t)g_cfg.burst_shots + dir;
+            if (idx < (int16_t)BURST_SHOTS_MIN) { idx = (int16_t)BURST_SHOTS_MIN; }
+            if (idx > (int16_t)BURST_SHOTS_MAX) { idx = (int16_t)BURST_SHOTS_MAX; }
+            g_cfg.burst_shots = (uint8_t)idx;
+            break;
+
+        case SET_ITEM_LBURST:
+            idx = (int16_t)g_cfg.long_burst_shots + dir;
+            if (idx < (int16_t)LONG_BURST_MIN) { idx = (int16_t)LONG_BURST_MIN; }
+            if (idx > (int16_t)LONG_BURST_MAX) { idx = (int16_t)LONG_BURST_MAX; }
+            g_cfg.long_burst_shots = (uint8_t)idx;
+            break;
+
+        default:
             break;
     }
 
@@ -260,9 +296,32 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
             ShowTextRight(y, s_sensor_name[g_cfg.sensor2_type], edit);
             break;
 
-        default:                                   /* 装填电机方向 */
+        case SET_ITEM_DIR:                         /* 装填电机方向 */
             OLED_ShowUTF8(0U, y, "电机方向", hl);
             ShowTextRight(y, s_dir_name[g_cfg.load_dir], edit);
+            break;
+
+        case SET_ITEM_PULSE:
+            OLED_ShowUTF8(0U, y, "单发脉冲时长", hl);
+            ShowNumRight(y, g_cfg.pulse_ms, edit);
+            break;
+
+        case SET_ITEM_GAP:
+            OLED_ShowUTF8(0U, y, "双发间隔时长", hl);
+            ShowNumRight(y, g_cfg.gap_ms, edit);
+            break;
+
+        case SET_ITEM_BURST:
+            OLED_ShowUTF8(0U, y, "点射用弹数", hl);
+            ShowNumRight(y, g_cfg.burst_shots, edit);
+            break;
+
+        case SET_ITEM_LBURST:
+            OLED_ShowUTF8(0U, y, "长点射用弹数", hl);
+            ShowNumRight(y, g_cfg.long_burst_shots, edit);
+            break;
+
+        default:
             break;
     }
 }
@@ -285,6 +344,12 @@ static void Menu_DrawSet(void)
     OLED_Refresh();
 }
 
+/* 长按连加/连减（步进 10）适用的项：余弹数、双发间隔 */
+static uint8_t Menu_IsFastItem(void)
+{
+    return ((s_sel == SET_ITEM_AMMO) || (s_sel == SET_ITEM_GAP)) ? 1U : 0U;
+}
+
 static void Menu_SetKeys(uint32_t now)
 {
     uint8_t kA = DI_IsHigh(MENU_KEY_A_CH);
@@ -299,7 +364,7 @@ static void Menu_SetKeys(uint32_t now)
             s_rep_tick   = now;
             Menu_Adjust(1);
         }
-        else if ((s_edit != 0U) && (s_sel == SET_ITEM_AMMO) &&
+        else if ((s_edit != 0U) && Menu_IsFastItem() &&
                  ((now - s_press_tick) >= WORK_KEY_REPEAT_DELAY_MS) &&
                  ((now - s_rep_tick) >= WORK_KEY_REPEAT_MS))
         {
@@ -316,7 +381,7 @@ static void Menu_SetKeys(uint32_t now)
             s_rep_tick   = now;
             Menu_Adjust(-1);
         }
-        else if ((s_edit != 0U) && (s_sel == SET_ITEM_AMMO) &&
+        else if ((s_edit != 0U) && Menu_IsFastItem() &&
                  ((now - s_press_tick) >= WORK_KEY_REPEAT_DELAY_MS) &&
                  ((now - s_rep_tick) >= WORK_KEY_REPEAT_MS))
         {

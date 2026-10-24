@@ -27,6 +27,10 @@ void Global_Init(void)
     g_cfg.fire_mode = FIRE_MODE_UNLIMITED;  /* 默认射击模式：无限制 */
     g_cfg.module_type = MODULE_FIRE;        /* 默认模块型号：火力模块 */
     g_cfg.shot_total = 0U;
+    g_cfg.pulse_ms = 100U;              /* 默认单发脉冲 100ms */
+    g_cfg.gap_ms = 150U;                /* 默认双发间隔 150ms */
+    g_cfg.burst_shots = 3U;             /* 默认点射 3 发 */
+    g_cfg.long_burst_shots = 6U;        /* 默认长点射 6 发 */
     g_cfg.motor_duty_pct = 90U;
     g_cfg.load_dir = LOAD_DIR_FORWARD;  /* 默认装填电机正向 */
     g_cfg.over_current_a = 20U;

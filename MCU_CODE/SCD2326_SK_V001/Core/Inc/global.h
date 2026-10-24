@@ -83,6 +83,16 @@ extern "C" {
 #define LOAD_DIR_REVERSE      1U    /* 反向：与设定方向相反 */
 #define LOAD_DIR_NUM          2U
 
+/* 射击时序参数范围（设置模式可调） */
+#define SHOT_PULSE_MIN        1U    /* 单发脉冲时长 ms */
+#define SHOT_PULSE_MAX        200U
+#define SHOT_GAP_MIN          10U   /* 双发间隔时长 ms */
+#define SHOT_GAP_MAX          1000U
+#define BURST_SHOTS_MIN       2U    /* 点射用弹数 */
+#define BURST_SHOTS_MAX       6U
+#define LONG_BURST_MIN        3U    /* 长点射用弹数 */
+#define LONG_BURST_MAX        10U
+
 /*============================================================================*/
 /* 串口状态打印                                                                */
 /*============================================================================*/
@@ -111,6 +121,12 @@ typedef struct
     uint8_t  fire_mode;             /* 射击模式 FIRE_MODE_* */
     uint8_t  module_type;           /* 模块型号 MODULE_* */
     uint16_t shot_total;            /* 累计射击次数（仅统计） */
+
+    /* 射击时序参数（设置模式可调） */
+    uint16_t pulse_ms;              /* 单发脉冲时长 ms，1~200 */
+    uint16_t gap_ms;                /* 双发间隔时长 ms，10~1000 */
+    uint8_t  burst_shots;           /* 点射用弹数，2~6 */
+    uint8_t  long_burst_shots;      /* 长点射用弹数，3~10 */
 
     /* 电机 */
     uint8_t  motor_duty_pct;        /* 电机默认占空比 % */

@@ -28,11 +28,7 @@ extern "C" {
 /* 装填回退方向：与装填方向相反 */
 #define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
 
-/* 射击时序 */
-#define WORK_SHOT_PULSE_MS       100U   /* 单发脉宽 */
-#define WORK_SHOT_GAP_MS         150U   /* 两发之间的间隔 */
-#define WORK_BURST_SHOTS         3U     /* 点射发数 */
-#define WORK_LONG_BURST_SHOTS    6U     /* 长点射发数 */
+/* 射击时序：单发脉宽、双发间隔、点射/长点射发数均由设置模式装定（见 g_cfg） */
 #define WORK_FIRE_CONTINUOUS     0xFFU  /* 持续射击标记 */
 
 /* 设置模式按键连加/连减 */

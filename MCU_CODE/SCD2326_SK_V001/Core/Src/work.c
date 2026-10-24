@@ -357,7 +357,7 @@ void Work_Task(void)
             if (s_fire_level != 0U)
             {
                 /* 脉宽结束 */
-                if ((now - s_fire_tick) >= WORK_SHOT_PULSE_MS)
+                if ((now - s_fire_tick) >= g_cfg.pulse_ms)
                 {
                     Work_FireOff();
                     s_fire_level = 0U;
@@ -372,7 +372,7 @@ void Work_Task(void)
             else
             {
                 /* 间隔结束：还有弹就继续打 */
-                if ((now - s_fire_tick) >= WORK_SHOT_GAP_MS)
+                if ((now - s_fire_tick) >= g_cfg.gap_ms)
                 {
                     if ((s_fire_left == 0U) || (Work_FireReady() == 0U))
                     {
@@ -436,10 +436,10 @@ void Work_KeyTask(void)
                 switch (g_cfg.fire_mode)
                 {
                     case FIRE_MODE_BURST:
-                        Work_FireStart(WORK_BURST_SHOTS, 0U);
+                        Work_FireStart(g_cfg.burst_shots, 0U);
                         break;
                     case FIRE_MODE_LONG_BURST:
-                        Work_FireStart(WORK_LONG_BURST_SHOTS, 0U);
+                        Work_FireStart(g_cfg.long_burst_shots, 0U);
                         break;
                     case FIRE_MODE_AUTO:
                         Work_FireStart(WORK_FIRE_CONTINUOUS, 0U);

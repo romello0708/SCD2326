@@ -223,6 +223,10 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.ammo = g_cfg.ammo;
     cfg.ammo_target = g_cfg.ammo_target;
     cfg.shot_total = g_cfg.shot_total;
+    cfg.pulse_ms = g_cfg.pulse_ms;
+    cfg.gap_ms = g_cfg.gap_ms;
+    cfg.burst_shots = g_cfg.burst_shots;
+    cfg.long_burst_shots = g_cfg.long_burst_shots;
     cfg.baudrate = g_cfg.baudrate;
     cfg.check = 0U;
 
@@ -277,6 +281,17 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
     g_cfg.ammo = (cfg.ammo > AMMO_MAX) ? AMMO_MAX : cfg.ammo;
     g_cfg.ammo_target = (cfg.ammo_target > AMMO_MAX) ? AMMO_MAX : cfg.ammo_target;
     g_cfg.shot_total = cfg.shot_total;
+
+    /* 射击时序参数：越界时回落到默认值，避免异常配置导致动作异常 */
+    g_cfg.pulse_ms = ((cfg.pulse_ms < SHOT_PULSE_MIN) || (cfg.pulse_ms > SHOT_PULSE_MAX)) ?
+                     100U : cfg.pulse_ms;
+    g_cfg.gap_ms = ((cfg.gap_ms < SHOT_GAP_MIN) || (cfg.gap_ms > SHOT_GAP_MAX)) ?
+                   150U : cfg.gap_ms;
+    g_cfg.burst_shots = ((cfg.burst_shots < BURST_SHOTS_MIN) || (cfg.burst_shots > BURST_SHOTS_MAX)) ?
+                        3U : cfg.burst_shots;
+    g_cfg.long_burst_shots = ((cfg.long_burst_shots < LONG_BURST_MIN) || (cfg.long_burst_shots > LONG_BURST_MAX)) ?
+                             6U : cfg.long_burst_shots;
+
     g_cfg.baudrate = cfg.baudrate;
 
     return HAL_OK;

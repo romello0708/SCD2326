@@ -16,7 +16,7 @@ extern "C" {
 
 #define EEPROM_CFG_ADDR        0x0000U    /* 系统配置区 */
 #define EEPROM_TEST_ADDR       0x3F00U    /* 自检区（最后一个页区） */
-#define EEPROM_CFG_MAGIC       0x5AADU    /* 结构变更时递增，旧数据自动失效 */
+#define EEPROM_CFG_MAGIC       0x5AAEU    /* 结构变更时递增，旧数据自动失效 */
 
 /* 掉电保存的系统配置（字段顺序已按对齐排布，避免填充字节影响校验和） */
 typedef struct
@@ -35,6 +35,10 @@ typedef struct
     uint16_t ammo;                         /* 余弹数 0~200 */
     uint16_t ammo_target;                  /* 装填目标值 0~200 */
     uint16_t shot_total;                   /* 累计射击次数 */
+    uint16_t pulse_ms;                     /* 单发脉冲时长 ms */
+    uint16_t gap_ms;                       /* 双发间隔时长 ms */
+    uint8_t  burst_shots;                  /* 点射用弹数 */
+    uint8_t  long_burst_shots;             /* 长点射用弹数 */
     uint16_t check;                        /* 前面所有字节的累加和 */
 } EEPROM_Config_t;
 
