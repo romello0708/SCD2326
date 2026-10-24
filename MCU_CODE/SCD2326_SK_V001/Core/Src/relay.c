@@ -23,7 +23,7 @@ static void Relay_Write(uint8_t ch, GPIO_PinState state)
 
 void Relay_Init(void)
 {
-    /* 上电按配置的传感器类型设置，默认（配置无效时）为 NPN */
+    /* 上电按配置的传感器类型设置，默认（配置无效时）为 PNP */
     Relay_SetType(1U, g_cfg.sensor1_type);
     Relay_SetType(2U, g_cfg.sensor2_type);
 }
