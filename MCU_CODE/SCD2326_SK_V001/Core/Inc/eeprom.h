@@ -16,7 +16,7 @@ extern "C" {
 
 #define EEPROM_CFG_ADDR        0x0000U    /* 系统配置区 */
 #define EEPROM_TEST_ADDR       0x3F00U    /* 自检区（最后一个页区） */
-#define EEPROM_CFG_MAGIC       0x5AAAU    /* 结构变更时递增，旧数据自动失效 */
+#define EEPROM_CFG_MAGIC       0x5AABU    /* 结构变更时递增，旧数据自动失效 */
 
 /* 掉电保存的系统配置（字段顺序已按对齐排布，避免填充字节影响校验和） */
 typedef struct

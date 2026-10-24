@@ -27,7 +27,7 @@
 #define SET_ROW_STEP     15U
 #define SET_ROW_NUM      3U      /* 标题下方可见行数，其余行滚动显示 */
 #define UI_RIGHT_X       120U    /* 数值右对齐边界，右侧留 8px 余量（与示意图一致） */
-#define AMMO_NUM_UP_PX   3U      /* 余弹数值相对文字行上移的像素数 */
+#define AMMO_NUM_UP_PX   6U      /* 余弹数值相对文字行上移的像素数 */
 
 /* 设置项 */
 #define SET_ITEM_AMMO    0U
