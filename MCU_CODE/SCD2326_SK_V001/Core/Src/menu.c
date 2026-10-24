@@ -4,7 +4,7 @@
  *   A = 向上切换设置项 / 增大数值     B = 向下切换设置项 / 减小数值
  *   C = 进入 / 退出调节；退出时自动保存到 EEPROM
  *   标题行固定，下面三行循环显示设置项：
- *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型
+ *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型、电机方向
  *
  * 工作模式（中挡）：显示余弹数、射击模式、工作状态（未装填/装填中/射击中）
  * 调试模式（下挡）：显示余弹数、初始到位信号、到位位置信号
@@ -35,7 +35,8 @@
 #define SET_ITEM_MODULE  2U
 #define SET_ITEM_SENSOR1 3U
 #define SET_ITEM_SENSOR2 4U
-#define SET_ITEM_NUM     5U
+#define SET_ITEM_DIR     5U     /* 装填电机方向 */
+#define SET_ITEM_NUM     6U
 
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
@@ -53,6 +54,11 @@ static const char * const s_module_name[MODULE_NUM] =
 static const char * const s_sensor_name[SENSOR_TYPE_NUM] =
 {
     "NPN", "PNP"
+};
+
+static const char * const s_dir_name[LOAD_DIR_NUM] =
+{
+    "正向", "反向"
 };
 
 static uint8_t  s_mode = 0xFFU;   /* 上次绘制的挡位 */
@@ -195,11 +201,16 @@ static void Menu_Adjust(int16_t dir)
             Relay_SetType(1U, (uint8_t)idx);       /* 立即作用于继电器 */
             break;
 
-        default:                                   /* 传感器2类型 */
+        case SET_ITEM_SENSOR2:
             idx = (int16_t)g_cfg.sensor2_type + dir;
             if (idx < 0) { idx = (int16_t)SENSOR_TYPE_NUM - 1; }
             if (idx >= (int16_t)SENSOR_TYPE_NUM) { idx = 0; }
             Relay_SetType(2U, (uint8_t)idx);       /* 立即作用于继电器 */
+            break;
+
+        default:                                   /* 装填电机方向 */
+            g_cfg.load_dir = (g_cfg.load_dir == LOAD_DIR_FORWARD) ?
+                             LOAD_DIR_REVERSE : LOAD_DIR_FORWARD;
             break;
     }
 
@@ -244,9 +255,14 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
             ShowTextRight(y, s_sensor_name[g_cfg.sensor1_type], edit);
             break;
 
-        default:
+        case SET_ITEM_SENSOR2:
             OLED_ShowUTF8(0U, y, "传感器2类型", hl);
             ShowTextRight(y, s_sensor_name[g_cfg.sensor2_type], edit);
+            break;
+
+        default:                                   /* 装填电机方向 */
+            OLED_ShowUTF8(0U, y, "电机方向", hl);
+            ShowTextRight(y, s_dir_name[g_cfg.load_dir], edit);
             break;
     }
 }

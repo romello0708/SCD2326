@@ -78,6 +78,11 @@ extern "C" {
 #define AMMO_MAX              200U
 #define AMMO_STEP             1U
 
+/* 装填电机方向（设置模式可切换，工作/调试模式都生效） */
+#define LOAD_DIR_FORWARD      0U    /* 正向：按程序设定方向 */
+#define LOAD_DIR_REVERSE      1U    /* 反向：与设定方向相反 */
+#define LOAD_DIR_NUM          2U
+
 /*============================================================================*/
 /* 串口状态打印                                                                */
 /*============================================================================*/
@@ -109,6 +114,7 @@ typedef struct
 
     /* 电机 */
     uint8_t  motor_duty_pct;        /* 电机默认占空比 % */
+    uint8_t  load_dir;              /* 装填电机方向 LOAD_DIR_*（工作/调试模式通用） */
 
     /* 电流 */
     uint8_t  over_current_a;        /* 过流阈值 A */

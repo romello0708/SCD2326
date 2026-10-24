@@ -25,6 +25,9 @@ extern "C" {
 #define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
 #define WORK_DIR_RESET       MOTOR_STATE_REVERSE
 
+/* 装填回退方向：与装填方向相反 */
+#define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
+
 /* 射击时序 */
 #define WORK_SHOT_PULSE_MS       100U   /* 单发脉宽 */
 #define WORK_SHOT_GAP_MS         150U   /* 两发之间的间隔 */
@@ -55,6 +58,7 @@ extern "C" {
 #define WORK_ST_FIRE         4U
 #define WORK_ST_TIMEOUT      5U
 #define WORK_ST_OVER_CUR     6U
+#define WORK_ST_LOAD_BACK    7U    /* 装填到位后回退到初始到位 */
 
 void     Work_Init(void);
 void     Work_Task(void);        /* 1ms：到位/超时/堵转判定、射击时序、装填计数 */

@@ -28,6 +28,7 @@ void Global_Init(void)
     g_cfg.module_type = MODULE_FIRE;        /* 默认模块型号：火力模块 */
     g_cfg.shot_total = 0U;
     g_cfg.motor_duty_pct = 90U;
+    g_cfg.load_dir = LOAD_DIR_FORWARD;  /* 默认装填电机正向 */
     g_cfg.over_current_a = 20U;
     g_cfg.echo_enable = 1U;
     g_cfg.status_print_enable = 1U;

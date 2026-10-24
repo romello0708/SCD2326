@@ -1,8 +1,9 @@
 /* 工作 / 调试模式动作控制
  *
  * 工作模式（拨动开关中挡）：
- *   A = 装填：电机向前运行，余弹数达到设置模式的装定值或运行到到位位置(IN_10)即停；
- *       装填过程中再次按下 A 立即停止装填
+ *   A = 装填：按下后电机按设定方向转动，收到前到位信号(IN_10)或余弹达到装定值后停止，
+ *       随即反向回退，收到后到位信号(IN_9)停止；前后到位信号同时有效时禁止电机动作；
+ *       装填/回退过程中再次按下 A 立即停止
  *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出
  *   B = 无作用
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
@@ -41,6 +42,7 @@ static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
 static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
 static uint8_t  s_ammo_dirty;     /* 1 = 余弹有未保存的变化 */
 static uint32_t s_idle_tick;      /* 最近一次非空闲时刻 */
+static uint16_t s_load_ammo0;     /* 本次装填开始时的余弹数（用于判断装填中是否增加） */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -61,7 +63,8 @@ static void Work_StopMotion(void)
 {
     Motor_EmergencyStop();
     s_stall_ms = 0U;
-    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
+    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK) ||
+        (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
     {
         s_state = WORK_ST_IDLE;
     }
@@ -87,6 +90,26 @@ static uint8_t Work_FireReady(void)
         return 1U;
     }
     return (g_cfg.ammo > AMMO_MIN) ? 1U : 0U;
+}
+
+/* 前后到位信号同时有效：位置异常，禁止电机动作 */
+static uint8_t Work_PosInvalid(void)
+{
+    if ((DI_IsHigh(WORK_FRONT_CH) != 0U) && (DI_IsHigh(WORK_REAR_CH) != 0U))
+    {
+        return 1U;
+    }
+    return 0U;
+}
+
+/* 按设置模式的“电机方向”换算实际转动方向（工作/调试模式通用） */
+static uint8_t Work_ApplyDir(uint8_t dir)
+{
+    if (g_cfg.load_dir == LOAD_DIR_REVERSE)
+    {
+        return (dir == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD;
+    }
+    return dir;
 }
 
 /* 是否允许启动新动作：空闲，或上一次动作异常结束（超时/过流） */
@@ -196,10 +219,15 @@ void Work_Abort(void)
 /*--------------------- 动作启动 ---------------------*/
 static void Work_StartMotion(uint8_t state, uint8_t dir)
 {
+    if (Work_PosInvalid() != 0U)
+    {
+        return;                      /* 前后到位同时有效：禁止电机动作 */
+    }
+
     Work_FireStop();                 /* 动作前先断开击发输出，避免同时动作 */
 
     Motor_SetDutyPercent(g_cfg.motor_duty_pct);
-    Motor_SetState(dir);
+    Motor_SetState(Work_ApplyDir(dir));
 
     s_state      = state;
     s_start_tick = HAL_GetTick();
@@ -244,7 +272,8 @@ void Work_Task(void)
     }
 
     /* 电机动作中：总电流与 U 相取较大值做堵转判定 */
-    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
+    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK) ||
+        (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
     {
         imag = AD_GetCurrent(AD_INDEX_ALL);
         if (imag < 0.0f) { imag = -imag; }
@@ -271,16 +300,29 @@ void Work_Task(void)
     switch (s_state)
     {
         case WORK_ST_LOAD:
-            /* 余弹数达到设置模式装定值：立即停止装填 */
-            if (g_cfg.ammo >= g_cfg.ammo_target)
+            if (Work_PosInvalid() != 0U)
             {
-                Work_StopMotion();
+                Work_StopMotion();                 /* 前后到位同时有效：立即停止 */
             }
-            else if (DI_IsHigh(WORK_FRONT_CH) != 0U)
+            else if ((DI_IsHigh(WORK_FRONT_CH) != 0U) ||
+                     ((g_cfg.ammo >= g_cfg.ammo_target) && (g_cfg.ammo > s_load_ammo0)))
             {
-                Work_StopMotion();                 /* 到位位置 */
+                /* 前到位，或装填中余弹增加到装定值：停车后反向回退 */
+                Work_StartMotion(WORK_ST_LOAD_BACK, WORK_DIR_LOAD_BACK);
             }
             else if ((now - s_start_tick) >= WORK_LOAD_TIMEOUT_MS)
+            {
+                Work_StopMotion();
+                s_state = WORK_ST_TIMEOUT;
+            }
+            break;
+
+        case WORK_ST_LOAD_BACK:
+            if (DI_IsHigh(WORK_REAR_CH) != 0U)
+            {
+                Work_StopMotion();                 /* 后到位：回退结束 */
+            }
+            else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {
                 Work_StopMotion();
                 s_state = WORK_ST_TIMEOUT;
@@ -375,12 +417,13 @@ void Work_KeyTask(void)
         /* 装填：按一下自动运行，再次按下立即停止 */
         if ((kA != 0U) && (s_prev[0] == 0U))
         {
-            if (s_state == WORK_ST_LOAD)
+            if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK))
             {
-                Work_StopMotion();           /* 装填中再次按下：停止装填 */
+                Work_StopMotion();           /* 装填/回退中再次按下：立即停止 */
             }
             else if (Work_CanStart() != 0U)
             {
+                s_load_ammo0 = g_cfg.ammo;   /* 记录本次装填起点，用于余弹达标判断 */
                 Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
             }
         }
