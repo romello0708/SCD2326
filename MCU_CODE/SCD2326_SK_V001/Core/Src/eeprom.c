@@ -7,6 +7,7 @@
 #include "i2c.h"
 #include "global.h"
 #include <string.h>
+#include <stddef.h>
 
 /* 按 100kHz 粗略估算传输时间，给足余量 */
 #define EEPROM_TIMEOUT(len)   (20U + ((uint32_t)(len) * 10U) / 8U)
@@ -230,7 +231,8 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.baudrate = g_cfg.baudrate;
     cfg.check = 0U;
 
-    for (i = 0U; i < (uint16_t)(sizeof(cfg) - sizeof(cfg.check)); i++)
+    /* 只累加 check 之前的字节：结构体尾部有对齐填充，不能用 sizeof-2 */
+    for (i = 0U; i < (uint16_t)offsetof(EEPROM_Config_t, check); i++)
     {
         sum = (uint16_t)(sum + p[i]);
     }
@@ -259,7 +261,7 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
         return HAL_ERROR;               /* 未保存过 */
     }
 
-    for (i = 0U; i < (uint16_t)(sizeof(cfg) - sizeof(cfg.check)); i++)
+    for (i = 0U; i < (uint16_t)offsetof(EEPROM_Config_t, check); i++)
     {
         sum = (uint16_t)(sum + p[i]);
     }

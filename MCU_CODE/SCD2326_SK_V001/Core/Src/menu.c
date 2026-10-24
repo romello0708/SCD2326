@@ -46,6 +46,9 @@
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
 
+/* 参数改动后延时写入 EEPROM（避开连续按键），保证直接断电也不丢参数 */
+#define CFG_SAVE_DELAY_MS 300U
+
 static const char * const s_fire_name[FIRE_MODE_NUM] =
 {
     "无限制", "连射", "长点射", "点射", "单发"
@@ -72,6 +75,7 @@ static uint8_t  s_top;            /* 设置页滚动窗口首项 */
 static uint8_t  s_edit;           /* 1 = 正在调节数值 */
 static uint8_t  s_dirty;          /* 1 = 需要重绘 */
 static uint8_t  s_cfg_dirty;      /* 1 = 配置已改，需写 EEPROM */
+static uint32_t s_save_tick;      /* 最近一次参数改动时刻（延时保存用） */
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
 static uint32_t s_press_tick;     /* A/B 按下时刻（连加判定） */
 static uint32_t s_rep_tick;       /* 连加上次触发时刻 */
@@ -252,6 +256,7 @@ static void Menu_Adjust(int16_t dir)
 
     s_dirty = 1U;
     s_cfg_dirty = 1U;
+    s_save_tick = HAL_GetTick();
 
     /* 传感器类型改完立即保存，避免停在设置模式时掉电丢失 */
     if ((s_sel == SET_ITEM_SENSOR1) || (s_sel == SET_ITEM_SENSOR2))
@@ -496,6 +501,7 @@ void Menu_Init(void)
     s_edit         = 0U;
     s_dirty        = 1U;
     s_cfg_dirty    = 0U;
+    s_save_tick    = HAL_GetTick();
     s_refresh_tick = HAL_GetTick();
     s_press_tick   = s_refresh_tick;
     s_rep_tick     = s_refresh_tick;
@@ -531,6 +537,19 @@ void Menu_Task(void)
     if (mode == WORK_MODE_SET)
     {
         Menu_SetKeys(now);
+
+        /* 参数改动后 300ms 无操作即写入 EEPROM，防止直接断电丢失 */
+        if ((s_cfg_dirty != 0U) && ((now - s_save_tick) >= CFG_SAVE_DELAY_MS))
+        {
+            if (EEPROM_SaveConfig() == HAL_OK)
+            {
+                s_cfg_dirty = 0U;
+            }
+            else
+            {
+                s_save_tick = now;       /* 写失败稍后重试 */
+            }
+        }
 
         if (s_dirty != 0U)
         {
