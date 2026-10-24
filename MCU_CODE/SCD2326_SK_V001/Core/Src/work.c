@@ -21,7 +21,7 @@
  *   点射  ：每按一次 3 发
  *   单发  ：每按一次 1 发
  *
- * 余弹：设置模式可直接装定 0~200；装填过程中 IN_7 每个上升沿 +1（上限 200）。
+ * 余弹：设置模式可直接装定 0~200；每轮装填期间 IN_7 的计数信号只计 1 次（上限 200）。
  */
 #include "work.h"
 #include "global.h"
@@ -44,6 +44,7 @@ static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
 static uint8_t  s_ammo_dirty;     /* 1 = 余弹有未保存的变化 */
 static uint32_t s_idle_tick;      /* 最近一次非空闲时刻 */
 static uint16_t s_load_ammo0;     /* 本次装填开始时的余弹数（用于判断装填中是否增加） */
+static uint8_t  s_load_counted;   /* 1 = 本轮装填已计过一次余弹 */
 static uint8_t  s_di_front;       /* 上次前到位电平（日志用） */
 static uint8_t  s_di_rear;        /* 上次后到位电平（日志用） */
 
@@ -183,6 +184,7 @@ void Work_Init(void)
 
     s_ammo_dirty = 0U;
     s_idle_tick  = s_tick;
+    s_load_counted = 0U;
 
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
     s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
@@ -289,16 +291,18 @@ void Work_Task(void)
         }
     }
 
-    /* IN_7：装填过程中每个上升沿余弹 +1 */
+    /* IN_7：一轮装填只计一次余弹，多余上升沿忽略 */
     cnt = DI_GetRiseCount(WORK_COUNT_CH);
     if (cnt != s_last_cnt)
     {
-        if ((s_state == WORK_ST_LOAD) && (g_cfg.work_mode != WORK_MODE_SET))
+        if ((s_state == WORK_ST_LOAD) && (g_cfg.work_mode != WORK_MODE_SET) &&
+            (s_load_counted == 0U))
         {
-            uint16_t add = (uint16_t)(cnt - s_last_cnt);
-            uint16_t ammo = (uint16_t)(g_cfg.ammo + add);
-
-            g_cfg.ammo = (ammo > AMMO_MAX) ? AMMO_MAX : ammo;
+            s_load_counted = 1U;
+            if (g_cfg.ammo < AMMO_MAX)
+            {
+                g_cfg.ammo++;
+            }
             s_ammo_dirty = 1U;
             LOG("[AMMO] %d\r\n", g_cfg.ammo);
         }
@@ -482,6 +486,7 @@ void Work_KeyTask(void)
                 else
                 {
                     s_load_ammo0 = g_cfg.ammo;   /* 记录本次装填起点，用于余弹达标判断 */
+                    s_load_counted = 0U;         /* 新一轮装填，允许计数一次 */
                     Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
                 }
             }
