@@ -160,10 +160,17 @@ static void Menu_Adjust(int16_t dir)
     switch (s_sel)
     {
         case SET_ITEM_AMMO:
-            /* 设置页装定的是“装填目标值”，运行页显示的是实际余弹数 */
+            /* 设置页装定的是“装填目标值”，运行页显示的是实际余弹数；
+             * 到达上下限后回到另一端，循环变化 */
             idx = (int16_t)g_cfg.ammo_target + dir;
-            if (idx < (int16_t)AMMO_MIN) { idx = (int16_t)AMMO_MIN; }
-            if (idx > (int16_t)AMMO_MAX) { idx = (int16_t)AMMO_MAX; }
+            if (idx > (int16_t)AMMO_MAX)
+            {
+                idx = (int16_t)AMMO_MIN;
+            }
+            else if (idx < (int16_t)AMMO_MIN)
+            {
+                idx = (int16_t)AMMO_MAX;
+            }
             g_cfg.ammo_target = (uint16_t)idx;
             break;
 
