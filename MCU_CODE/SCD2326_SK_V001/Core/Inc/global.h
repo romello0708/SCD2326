@@ -101,7 +101,8 @@ typedef struct
     uint8_t  sensor2_type;          /* 传感器2：SENSOR_TYPE_NPN / SENSOR_TYPE_PNP */
 
     /* 工作/调试模式 */
-    uint16_t ammo;                  /* 余弹数 0~200，设置模式可装定，射击递减 */
+    uint16_t ammo;                  /* 实际余弹数 0~200：装填时 IN_7 递增，射击递减 */
+    uint16_t ammo_target;           /* 装填目标值 0~200：设置模式装定，余弹达到即停止装填 */
     uint8_t  fire_mode;             /* 射击模式 FIRE_MODE_* */
     uint8_t  module_type;           /* 模块型号 MODULE_* */
     uint16_t shot_total;            /* 累计射击次数（仅统计） */

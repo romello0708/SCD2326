@@ -23,6 +23,7 @@ void Global_Init(void)
     g_cfg.sensor1_type = SENSOR_TYPE_NPN;
     g_cfg.sensor2_type = SENSOR_TYPE_NPN;
     g_cfg.ammo = 0U;
+    g_cfg.ammo_target = AMMO_MAX;       /* 装填目标值，默认按满弹 200 */
     g_cfg.fire_mode = FIRE_MODE_SINGLE;
     g_cfg.module_type = MODULE_FIRE;
     g_cfg.shot_total = 0U;

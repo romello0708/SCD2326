@@ -1,7 +1,8 @@
 /* 工作 / 调试模式动作控制
  *
  * 工作模式（拨动开关中挡）：
- *   A = 装填：电机向前运行到到位位置(IN_10)，超时或堵转则停机
+ *   A = 装填：电机向前运行，余弹数达到设置模式的装定值或运行到到位位置(IN_10)即停；
+ *       装填过程中再次按下 A 立即停止装填
  *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出
  *   B = 无作用
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
@@ -270,7 +271,12 @@ void Work_Task(void)
     switch (s_state)
     {
         case WORK_ST_LOAD:
-            if (DI_IsHigh(WORK_FRONT_CH) != 0U)
+            /* 余弹数达到设置模式装定值：立即停止装填 */
+            if (g_cfg.ammo >= g_cfg.ammo_target)
+            {
+                Work_StopMotion();
+            }
+            else if (DI_IsHigh(WORK_FRONT_CH) != 0U)
             {
                 Work_StopMotion();                 /* 到位位置 */
             }
@@ -366,10 +372,14 @@ void Work_KeyTask(void)
 
     if (g_cfg.work_mode == WORK_MODE_WORK)
     {
-        /* 装填：按一下自动运行到到位位置 */
+        /* 装填：按一下自动运行，再次按下立即停止 */
         if ((kA != 0U) && (s_prev[0] == 0U))
         {
-            if (Work_CanStart() != 0U)
+            if (s_state == WORK_ST_LOAD)
+            {
+                Work_StopMotion();           /* 装填中再次按下：停止装填 */
+            }
+            else if (Work_CanStart() != 0U)
             {
                 Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
             }

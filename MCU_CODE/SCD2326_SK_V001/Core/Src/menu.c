@@ -19,13 +19,15 @@
 #include "eeprom.h"
 #include "relay.h"
 
-/* 设置页行坐标 */
-#define SET_TITLE_Y      0U
-#define SET_ROW1_Y       16U
-#define SET_ROW2_Y       32U
-#define SET_ROW3_Y       48U
+/* 页面行坐标：整体下移 5px，13x13 字模，行距 15px，共 4 行 */
+#define SET_TITLE_Y      5U
+#define SET_ROW1_Y       20U
+#define SET_ROW2_Y       35U
+#define SET_ROW3_Y       50U
+#define SET_ROW_STEP     15U
 #define SET_ROW_NUM      3U      /* 标题下方可见行数，其余行滚动显示 */
 #define UI_RIGHT_X       120U    /* 数值右对齐边界，右侧留 8px 余量（与示意图一致） */
+#define AMMO_NUM_UP_PX   3U      /* 余弹数值相对文字行上移的像素数 */
 
 /* 设置项 */
 #define SET_ITEM_AMMO    0U
@@ -101,12 +103,13 @@ static uint8_t NumWidth(uint16_t v)
     return (uint8_t)(len * OLED_ASC_WIDTH);
 }
 
-/* 右对齐显示数字 */
+/* 右对齐显示数字（余弹数值整体上移 3px，与 13x13 汉字视觉居中） */
 static void ShowNumRight(uint8_t y, uint16_t v, uint8_t mode)
 {
     uint8_t w = NumWidth(v);
+    uint8_t ny = (y >= AMMO_NUM_UP_PX) ? (uint8_t)(y - AMMO_NUM_UP_PX) : 0U;
 
-    OLED_ShowNum((uint8_t)(UI_RIGHT_X - w), y, (uint32_t)v, (uint8_t)(w / OLED_ASC_WIDTH), mode);
+    OLED_ShowNum((uint8_t)(UI_RIGHT_X - w), ny, (uint32_t)v, (uint8_t)(w / OLED_ASC_WIDTH), mode);
 }
 
 /* 右对齐显示文本 */
@@ -148,7 +151,8 @@ static void Menu_Adjust(int16_t dir)
 
     if (s_edit == 0U)
     {
-        Menu_SelectMove(dir);
+        /* 列表态：A(↑) 向上、B(↓) 向下，与调值方向相反 */
+        Menu_SelectMove((int16_t)(-dir));
         s_dirty = 1U;
         return;
     }
@@ -156,10 +160,11 @@ static void Menu_Adjust(int16_t dir)
     switch (s_sel)
     {
         case SET_ITEM_AMMO:
-            idx = (int16_t)g_cfg.ammo + dir;
+            /* 设置页装定的是“装填目标值”，运行页显示的是实际余弹数 */
+            idx = (int16_t)g_cfg.ammo_target + dir;
             if (idx < (int16_t)AMMO_MIN) { idx = (int16_t)AMMO_MIN; }
             if (idx > (int16_t)AMMO_MAX) { idx = (int16_t)AMMO_MAX; }
-            g_cfg.ammo = (uint16_t)idx;
+            g_cfg.ammo_target = (uint16_t)idx;
             break;
 
         case SET_ITEM_FIRE:
@@ -214,7 +219,7 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
     {
         case SET_ITEM_AMMO:
             OLED_ShowUTF8(0U, y, "余弹数", hl);
-            ShowNumRight(y, Work_GetAmmo(), edit);
+            ShowNumRight(y, g_cfg.ammo_target, edit);
             break;
 
         case SET_ITEM_FIRE:
@@ -251,7 +256,7 @@ static void Menu_DrawSet(void)
     for (i = 0U; i < SET_ROW_NUM; i++)
     {
         item = (uint8_t)((s_top + i) % SET_ITEM_NUM);
-        Menu_DrawSetItem(item, (uint8_t)(SET_ROW1_Y + (i * 16U)));
+        Menu_DrawSetItem(item, (uint8_t)(SET_ROW1_Y + (i * SET_ROW_STEP)));
     }
 
     OLED_Refresh();

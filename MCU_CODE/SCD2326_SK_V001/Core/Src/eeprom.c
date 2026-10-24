@@ -220,6 +220,7 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.fire_mode = g_cfg.fire_mode;
     cfg.module_type = g_cfg.module_type;
     cfg.ammo = g_cfg.ammo;
+    cfg.ammo_target = g_cfg.ammo_target;
     cfg.shot_total = g_cfg.shot_total;
     cfg.baudrate = g_cfg.baudrate;
     cfg.check = 0U;
@@ -272,6 +273,7 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
     g_cfg.fire_mode = (cfg.fire_mode < FIRE_MODE_NUM) ? cfg.fire_mode : FIRE_MODE_SINGLE;
     g_cfg.module_type = (cfg.module_type < MODULE_NUM) ? cfg.module_type : MODULE_FIRE;
     g_cfg.ammo = (cfg.ammo > AMMO_MAX) ? AMMO_MAX : cfg.ammo;
+    g_cfg.ammo_target = (cfg.ammo_target > AMMO_MAX) ? AMMO_MAX : cfg.ammo_target;
     g_cfg.shot_total = cfg.shot_total;
     g_cfg.baudrate = cfg.baudrate;
 

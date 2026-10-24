@@ -20,10 +20,10 @@ extern "C" {
 #define WORK_REAR_CH         9U     /* 初始到位 */
 #define WORK_FRONT_CH        10U    /* 到位位置 */
 
-/* 动作方向：装填/复位向前，拉栓向后；实物相反时只改这三行 */
-#define WORK_DIR_LOAD        MOTOR_STATE_FORWARD
-#define WORK_DIR_BOLT        MOTOR_STATE_REVERSE
-#define WORK_DIR_RESET       MOTOR_STATE_FORWARD
+/* 动作方向：装填/复位向后，拉栓向前；实物相反时只改这三行 */
+#define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
+#define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
+#define WORK_DIR_RESET       MOTOR_STATE_REVERSE
 
 /* 射击时序 */
 #define WORK_SHOT_PULSE_MS       100U   /* 单发脉宽 */

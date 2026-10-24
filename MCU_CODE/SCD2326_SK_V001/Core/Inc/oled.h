@@ -19,9 +19,9 @@ extern "C" {
 /* 上电自检：1 = 初始化后整屏点亮 500ms（用于确认屏体/连线），量产置 0 */
 #define OLED_BOOT_TEST    0U
 
-/* 字库尺寸：ASCII 为 8x15，中文固定 15x15 */
+/* 字库尺寸：ASCII 为 8x13，中文固定 13x13 */
 #define OLED_ASC_WIDTH    8U
-#define OLED_CJK_WIDTH    15U
+#define OLED_CJK_WIDTH    13U
 
 void OLED_Init(void);
 void OLED_Clear(void);
