@@ -20,8 +20,9 @@ extern "C" {
 #define WORK_REAR_CH         9U     /* 初始到位 */
 #define WORK_FRONT_CH        10U    /* 到位位置 */
 
-/* 动作方向：装填/复位向后，拉栓向前；实物相反时只改这三行 */
-#define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
+/* 动作方向：装填朝前到位(IN_10)运行，到位后反向退回后到位(IN_9)；
+ *          调试模式的拉栓/复位方向保持不变；实物相反时只改这三行 */
+#define WORK_DIR_LOAD        MOTOR_STATE_FORWARD
 #define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
 #define WORK_DIR_RESET       MOTOR_STATE_REVERSE
 
