@@ -242,30 +242,55 @@ static void Menu_Adjust(int16_t dir)
             break;
 
         case SET_ITEM_PULSE:
+            /* 到上下限后跳到另一端，循环变化 */
             idx = (int16_t)g_cfg.pulse_ms + dir;
-            if (idx < (int16_t)SHOT_PULSE_MIN) { idx = (int16_t)SHOT_PULSE_MIN; }
-            if (idx > (int16_t)SHOT_PULSE_MAX) { idx = (int16_t)SHOT_PULSE_MAX; }
+            if (idx > (int16_t)SHOT_PULSE_MAX)
+            {
+                idx = (int16_t)SHOT_PULSE_MIN;
+            }
+            else if (idx < (int16_t)SHOT_PULSE_MIN)
+            {
+                idx = (int16_t)SHOT_PULSE_MAX;
+            }
             g_cfg.pulse_ms = (uint16_t)idx;
             break;
 
         case SET_ITEM_GAP:
             idx = (int16_t)g_cfg.gap_ms + dir;
-            if (idx < (int16_t)SHOT_GAP_MIN) { idx = (int16_t)SHOT_GAP_MIN; }
-            if (idx > (int16_t)SHOT_GAP_MAX) { idx = (int16_t)SHOT_GAP_MAX; }
+            if (idx > (int16_t)SHOT_GAP_MAX)
+            {
+                idx = (int16_t)SHOT_GAP_MIN;
+            }
+            else if (idx < (int16_t)SHOT_GAP_MIN)
+            {
+                idx = (int16_t)SHOT_GAP_MAX;
+            }
             g_cfg.gap_ms = (uint16_t)idx;
             break;
 
         case SET_ITEM_BURST:
             idx = (int16_t)g_cfg.burst_shots + dir;
-            if (idx < (int16_t)BURST_SHOTS_MIN) { idx = (int16_t)BURST_SHOTS_MIN; }
-            if (idx > (int16_t)BURST_SHOTS_MAX) { idx = (int16_t)BURST_SHOTS_MAX; }
+            if (idx > (int16_t)BURST_SHOTS_MAX)
+            {
+                idx = (int16_t)BURST_SHOTS_MIN;
+            }
+            else if (idx < (int16_t)BURST_SHOTS_MIN)
+            {
+                idx = (int16_t)BURST_SHOTS_MAX;
+            }
             g_cfg.burst_shots = (uint8_t)idx;
             break;
 
         case SET_ITEM_LBURST:
             idx = (int16_t)g_cfg.long_burst_shots + dir;
-            if (idx < (int16_t)LONG_BURST_MIN) { idx = (int16_t)LONG_BURST_MIN; }
-            if (idx > (int16_t)LONG_BURST_MAX) { idx = (int16_t)LONG_BURST_MAX; }
+            if (idx > (int16_t)LONG_BURST_MAX)
+            {
+                idx = (int16_t)LONG_BURST_MIN;
+            }
+            else if (idx < (int16_t)LONG_BURST_MIN)
+            {
+                idx = (int16_t)LONG_BURST_MAX;
+            }
             g_cfg.long_burst_shots = (uint8_t)idx;
             break;
 
