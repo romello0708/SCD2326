@@ -16,12 +16,12 @@ extern "C" {
 #define OLED_CMD          0U
 #define OLED_DATA         1U
 
-/* 上电自检：1 = 初始化后整屏点亮 500ms（用于确认屏体/连线），量产可置 0 */
-#define OLED_BOOT_TEST    1U
+/* 上电自检：1 = 初始化后整屏点亮 500ms（用于确认屏体/连线），量产置 0 */
+#define OLED_BOOT_TEST    0U
 
-/* 字库尺寸：8 = 6x8 ASCII，16 = 8x16 ASCII；中文固定 16x16 */
-#define OLED_SIZE_8       8U
-#define OLED_SIZE_16      16U
+/* 字库尺寸：ASCII 为 8x15，中文固定 15x15 */
+#define OLED_ASC_WIDTH    8U
+#define OLED_CJK_WIDTH    15U
 
 void OLED_Init(void);
 void OLED_Clear(void);
@@ -30,11 +30,11 @@ void OLED_Refresh(void);
 void OLED_DrawPoint(uint8_t x, uint8_t y, uint8_t mode);
 void OLED_DrawHLine(uint8_t y, uint8_t mode);
 
-void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t size, uint8_t mode);
-void OLED_ShowString(uint8_t x, uint8_t y, const char *str, uint8_t size, uint8_t mode);
-void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t size, uint8_t mode);
+void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t mode);
+void OLED_ShowString(uint8_t x, uint8_t y, const char *str, uint8_t mode);
+void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t mode);
 
-/* 混合显示：ASCII 用 6x8，中文用 16x16，字符串为 UTF-8 编码 */
+/* 混合显示：ASCII 用 8x15，中文用 15x15，字符串为 UTF-8 编码 */
 void OLED_ShowUTF8(uint8_t x, uint8_t y, const char *str, uint8_t mode);
 
 #ifdef __cplusplus

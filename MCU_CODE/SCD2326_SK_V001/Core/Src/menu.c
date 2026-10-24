@@ -25,9 +25,7 @@
 #define SET_ROW2_Y       32U
 #define SET_ROW3_Y       48U
 #define SET_ROW_NUM      3U      /* 标题下方可见行数，其余行滚动显示 */
-#define SET_VALUE_X      64U
-#define SET_SENSOR_X     96U     /* 传感器类型行文字较长，数值右移 */
-#define DGB_VALUE_X      96U
+#define UI_RIGHT_X       120U    /* 数值右对齐边界，右侧留 8px 余量（与示意图一致） */
 
 /* 设置项 */
 #define SET_ITEM_AMMO    0U
@@ -67,7 +65,7 @@ static uint32_t s_rep_tick;       /* 连加上次触发时刻 */
 static uint32_t s_refresh_tick;   /* 运行页刷新计时 */
 
 /*------------------------- 字符串工具 -------------------------*/
-/* UTF-8 字符串像素宽度：ASCII 6px，汉字 16px（与 OLED_ShowUTF8 一致） */
+/* UTF-8 字符串像素宽度：ASCII 8px，汉字 15px（与 OLED_ShowUTF8 一致） */
 static uint8_t Utf8Width(const char *str)
 {
     uint8_t w = 0U;
@@ -76,12 +74,12 @@ static uint8_t Utf8Width(const char *str)
     {
         if ((uint8_t)*str < 0x80U)
         {
-            w = (uint8_t)(w + 6U);
+            w = (uint8_t)(w + OLED_ASC_WIDTH);
             str++;
         }
         else
         {
-            w = (uint8_t)(w + 16U);
+            w = (uint8_t)(w + OLED_CJK_WIDTH);
             str += 3;
         }
     }
@@ -89,19 +87,39 @@ static uint8_t Utf8Width(const char *str)
     return w;
 }
 
-/* 8x16 数字，不带前导零 */
-static void ShowNum(uint8_t x, uint8_t y, uint16_t v, uint8_t mode)
+/* 数字宽度（8x15，按位数计算） */
+static uint8_t NumWidth(uint16_t v)
 {
     uint8_t len = 1U;
-    uint16_t t = v;
 
-    while (t >= 10U)
+    while (v >= 10U)
     {
-        t /= 10U;
+        v /= 10U;
         len++;
     }
 
-    OLED_ShowNum(x, y, (uint32_t)v, len, OLED_SIZE_16, mode);
+    return (uint8_t)(len * OLED_ASC_WIDTH);
+}
+
+/* 右对齐显示数字 */
+static void ShowNumRight(uint8_t y, uint16_t v, uint8_t mode)
+{
+    uint8_t w = NumWidth(v);
+
+    OLED_ShowNum((uint8_t)(UI_RIGHT_X - w), y, (uint32_t)v, (uint8_t)(w / OLED_ASC_WIDTH), mode);
+}
+
+/* 右对齐显示文本 */
+static void ShowTextRight(uint8_t y, const char *str, uint8_t mode)
+{
+    uint8_t w = Utf8Width(str);
+
+    if (w > UI_RIGHT_X)
+    {
+        w = UI_RIGHT_X;
+    }
+
+    OLED_ShowUTF8((uint8_t)(UI_RIGHT_X - w), y, str, mode);
 }
 
 /*------------------------- 设置模式 -------------------------*/
@@ -196,27 +214,27 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
     {
         case SET_ITEM_AMMO:
             OLED_ShowUTF8(0U, y, "余弹数", hl);
-            ShowNum(SET_VALUE_X, y, Work_GetAmmo(), edit);
+            ShowNumRight(y, Work_GetAmmo(), edit);
             break;
 
         case SET_ITEM_FIRE:
             OLED_ShowUTF8(0U, y, "射击模式", hl);
-            OLED_ShowUTF8(SET_VALUE_X, y, s_fire_name[g_cfg.fire_mode], edit);
+            ShowTextRight(y, s_fire_name[g_cfg.fire_mode], edit);
             break;
 
         case SET_ITEM_MODULE:
             OLED_ShowUTF8(0U, y, "模块型号", hl);
-            OLED_ShowUTF8(SET_VALUE_X, y, s_module_name[g_cfg.module_type], edit);
+            ShowTextRight(y, s_module_name[g_cfg.module_type], edit);
             break;
 
         case SET_ITEM_SENSOR1:
             OLED_ShowUTF8(0U, y, "传感器1类型", hl);
-            OLED_ShowUTF8(SET_SENSOR_X, y, s_sensor_name[g_cfg.sensor1_type], edit);
+            ShowTextRight(y, s_sensor_name[g_cfg.sensor1_type], edit);
             break;
 
         default:
             OLED_ShowUTF8(0U, y, "传感器2类型", hl);
-            OLED_ShowUTF8(SET_SENSOR_X, y, s_sensor_name[g_cfg.sensor2_type], edit);
+            ShowTextRight(y, s_sensor_name[g_cfg.sensor2_type], edit);
             break;
     }
 }
@@ -324,24 +342,28 @@ static void Menu_DrawRun(uint8_t mode)
 
     OLED_Clear();
 
-    /* 标题：左侧挡位，右侧模块型号靠右对齐 */
+    /* 标题：左侧挡位，右侧模块型号靠右对齐（右边界 UI_RIGHT_X） */
     OLED_ShowUTF8(0U, SET_TITLE_Y, mode_name, 0U);
 
     if (mode != WORK_MODE_INVALID)
     {
         module_name = s_module_name[g_cfg.module_type];
         w = Utf8Width(module_name);
-        OLED_ShowUTF8((uint8_t)(OLED_WIDTH - w), SET_TITLE_Y, module_name, 0U);
+        if (w > UI_RIGHT_X)
+        {
+            w = UI_RIGHT_X;
+        }
+        OLED_ShowUTF8((uint8_t)(UI_RIGHT_X - w), SET_TITLE_Y, module_name, 0U);
     }
 
     /* 余弹数（三挡都显示） */
     OLED_ShowUTF8(0U, SET_ROW1_Y, "余弹数", 0U);
-    ShowNum(SET_VALUE_X, SET_ROW1_Y, Work_GetAmmo(), 0U);
+    ShowNumRight(SET_ROW1_Y, Work_GetAmmo(), 0U);
 
     if (mode == WORK_MODE_WORK)
     {
         OLED_ShowUTF8(0U, SET_ROW2_Y, "射击模式", 0U);
-        OLED_ShowUTF8(SET_VALUE_X, SET_ROW2_Y, s_fire_name[g_cfg.fire_mode], 0U);
+        ShowTextRight(SET_ROW2_Y, s_fire_name[g_cfg.fire_mode], 0U);
 
         st = Work_GetState();
         if (st == WORK_ST_LOAD)
@@ -358,17 +380,15 @@ static void Menu_DrawRun(uint8_t mode)
         }
 
         OLED_ShowUTF8(0U, SET_ROW3_Y, "工作状态", 0U);
-        OLED_ShowUTF8(SET_VALUE_X, SET_ROW3_Y, state_name, 0U);
+        ShowTextRight(SET_ROW3_Y, state_name, 0U);
     }
     else
     {
         OLED_ShowUTF8(0U, SET_ROW2_Y, "初始到位信号", 0U);
-        OLED_ShowUTF8(DGB_VALUE_X, SET_ROW2_Y,
-                      (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
 
         OLED_ShowUTF8(0U, SET_ROW3_Y, "到位位置信号", 0U);
-        OLED_ShowUTF8(DGB_VALUE_X, SET_ROW3_Y,
-                      (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW3_Y, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
     }
 
     OLED_Refresh();

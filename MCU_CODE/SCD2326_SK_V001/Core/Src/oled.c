@@ -118,8 +118,8 @@ static void OLED_Blit(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t 
     }
 }
 
-/* ASCII 字符：size = 8(6x8) 或 16(8x16) */
-void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t size, uint8_t mode)
+/* ASCII 字符：8x15 点阵（存储 8x16，最后一行留空） */
+void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t mode)
 {
     uint8_t idx;
 
@@ -129,32 +129,22 @@ void OLED_ShowChar(uint8_t x, uint8_t y, char chr, uint8_t size, uint8_t mode)
     }
 
     idx = (uint8_t)(chr - ' ');
-
-    if (size == OLED_SIZE_8)
-    {
-        if (idx >= ASC0806_NUM) { idx = 0U; }   /* 6x8 字库只到 'z' */
-        OLED_Blit(x, y, 6U, 8U, asc2_0806[idx], mode);
-    }
-    else if (size == OLED_SIZE_16)
-    {
-        OLED_Blit(x, y, 8U, 16U, asc2_1608[idx], mode);
-    }
+    OLED_Blit(x, y, OLED_ASC_WIDTH, 16U, asc2_0815[idx], mode);
 }
 
-void OLED_ShowString(uint8_t x, uint8_t y, const char *str, uint8_t size, uint8_t mode)
+void OLED_ShowString(uint8_t x, uint8_t y, const char *str, uint8_t mode)
 {
     while ((*str >= ' ') && (*str <= '~'))
     {
-        OLED_ShowChar(x, y, *str, size, mode);
-        x = (uint8_t)(x + ((size == OLED_SIZE_8) ? 6U : 8U));
+        OLED_ShowChar(x, y, *str, mode);
+        x = (uint8_t)(x + OLED_ASC_WIDTH);
         str++;
     }
 }
 
-void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t size, uint8_t mode)
+void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t mode)
 {
     uint8_t i;
-    uint8_t step = (size == OLED_SIZE_8) ? 6U : 8U;
     uint32_t pow10 = 1U;
 
     for (i = 1U; i < len; i++)
@@ -164,7 +154,8 @@ void OLED_ShowNum(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t size,
 
     for (i = 0; i < len; i++)
     {
-        OLED_ShowChar((uint8_t)(x + (step * i)), y, (char)('0' + ((num / pow10) % 10U)), size, mode);
+        OLED_ShowChar((uint8_t)(x + (OLED_ASC_WIDTH * i)), y,
+                      (char)('0' + ((num / pow10) % 10U)), mode);
         pow10 /= 10U;
     }
 }
@@ -187,7 +178,7 @@ static uint16_t OLED_FindGlyph(const char *utf8)
     return cjk_font_num;
 }
 
-/* UTF-8 字符串显示：ASCII 6x8，汉字 16x16 */
+/* UTF-8 字符串显示：ASCII 8x15，汉字 15x15 */
 void OLED_ShowUTF8(uint8_t x, uint8_t y, const char *str, uint8_t mode)
 {
     uint16_t idx;
@@ -196,8 +187,8 @@ void OLED_ShowUTF8(uint8_t x, uint8_t y, const char *str, uint8_t mode)
     {
         if ((uint8_t)*str < 0x80U)
         {
-            OLED_ShowChar(x, y, *str, OLED_SIZE_8, mode);
-            x = (uint8_t)(x + 6U);
+            OLED_ShowChar(x, y, *str, mode);
+            x = (uint8_t)(x + OLED_ASC_WIDTH);
             str++;
         }
         else
@@ -205,9 +196,9 @@ void OLED_ShowUTF8(uint8_t x, uint8_t y, const char *str, uint8_t mode)
             idx = OLED_FindGlyph(str);
             if (idx < cjk_font_num)
             {
-                OLED_Blit(x, y, 16U, 16U, cjk_font[idx].data, mode);
+                OLED_Blit(x, y, OLED_CJK_WIDTH, 16U, cjk_font[idx].data, mode);
             }
-            x = (uint8_t)(x + 16U);
+            x = (uint8_t)(x + OLED_CJK_WIDTH);
             str += 3;      /* UTF-8 常用汉字为 3 字节 */
         }
     }
