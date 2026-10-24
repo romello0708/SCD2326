@@ -29,6 +29,7 @@
 #include "motor.h"
 #include "AnalogQuantityAcquisition.h"
 #include "eeprom.h"
+#include "log.h"
 
 static uint8_t  s_state;          /* WORK_ST_* */
 static uint8_t  s_last_mode;      /* 上次工作模式，用于切挡中止 */
@@ -43,6 +44,8 @@ static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
 static uint8_t  s_ammo_dirty;     /* 1 = 余弹有未保存的变化 */
 static uint32_t s_idle_tick;      /* 最近一次非空闲时刻 */
 static uint16_t s_load_ammo0;     /* 本次装填开始时的余弹数（用于判断装填中是否增加） */
+static uint8_t  s_di_front;       /* 上次前到位电平（日志用） */
+static uint8_t  s_di_rear;        /* 上次后到位电平（日志用） */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -61,6 +64,7 @@ static void Work_FireOff(void)
 
 static void Work_StopMotion(void)
 {
+    LOG("[MOT] stop st=%d\r\n", s_state);
     Motor_EmergencyStop();
     s_stall_ms = 0U;
     if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK) ||
@@ -73,6 +77,10 @@ static void Work_StopMotion(void)
 /* 结束射击：关输出并回到空闲 */
 static void Work_FireStop(void)
 {
+    if (s_state == WORK_ST_FIRE)
+    {
+        LOG("[FIRE] stop ammo=%d\r\n", g_cfg.ammo);
+    }
     Work_FireOff();
     s_fire_level = 0U;
     s_fire_left  = 0U;
@@ -141,6 +149,8 @@ static void Work_FirePulse(void)
 /* 启动射击序列：shots = 发数，WORK_FIRE_CONTINUOUS 为按住连发 */
 static void Work_FireStart(uint8_t shots, uint8_t unlimit)
 {
+    LOG("[FIRE] start mode=%d shots=%d unlim=%d ammo=%d\r\n",
+        g_cfg.fire_mode, shots, unlimit, g_cfg.ammo);
     s_fire_left    = shots;
     s_fire_unlimit = unlimit;
 
@@ -184,6 +194,9 @@ void Work_Init(void)
     s_hold_act[0]  = 0U;
     s_hold_act[1]  = 0U;
     s_hold_act[2]  = 0U;
+
+    s_di_front = DI_IsHigh(WORK_FRONT_CH);
+    s_di_rear  = DI_IsHigh(WORK_REAR_CH);
 }
 
 void Work_Abort(void)
@@ -191,6 +204,7 @@ void Work_Abort(void)
     uint32_t now = HAL_GetTick();
     uint8_t  key[3];
 
+    LOG("[ABORT]\r\n");
     Work_FireOff();
     Motor_EmergencyStop();
 
@@ -219,15 +233,20 @@ void Work_Abort(void)
 /*--------------------- 动作启动 ---------------------*/
 static void Work_StartMotion(uint8_t state, uint8_t dir)
 {
+    uint8_t real_dir;
+
     if (Work_PosInvalid() != 0U)
     {
+        LOG("[MOT] refuse: front&rear both on\r\n");
         return;                      /* 前后到位同时有效：禁止电机动作 */
     }
 
     Work_FireStop();                 /* 动作前先断开击发输出，避免同时动作 */
 
+    real_dir = Work_ApplyDir(dir);
+    LOG("[MOT] start st=%d dir=%d\r\n", state, real_dir);
     Motor_SetDutyPercent(g_cfg.motor_duty_pct);
-    Motor_SetState(Work_ApplyDir(dir));
+    Motor_SetState(real_dir);
 
     s_state      = state;
     s_start_tick = HAL_GetTick();
@@ -252,8 +271,22 @@ void Work_Task(void)
     if (g_cfg.work_mode != s_last_mode)
     {
         s_last_mode = g_cfg.work_mode;
+        LOG("[MODE] %d\r\n", g_cfg.work_mode);
         Work_Abort();
         return;
+    }
+
+    /* 到位信号变化打印 */
+    {
+        uint8_t f = DI_IsHigh(WORK_FRONT_CH);
+        uint8_t r = DI_IsHigh(WORK_REAR_CH);
+
+        if ((f != s_di_front) || (r != s_di_rear))
+        {
+            s_di_front = f;
+            s_di_rear  = r;
+            LOG("[DI] front=%d rear=%d\r\n", f, r);
+        }
     }
 
     /* IN_7：装填过程中每个上升沿余弹 +1 */
@@ -267,6 +300,7 @@ void Work_Task(void)
 
             g_cfg.ammo = (ammo > AMMO_MAX) ? AMMO_MAX : ammo;
             s_ammo_dirty = 1U;
+            LOG("[AMMO] %d\r\n", g_cfg.ammo);
         }
         s_last_cnt = cnt;
     }
@@ -286,6 +320,7 @@ void Work_Task(void)
         {
             if (++s_stall_ms >= WORK_STALL_MS)
             {
+                LOG("[MOT] overcurrent %dmA\r\n", (int)(imag * 1000.0f));
                 Work_StopMotion();
                 s_state = WORK_ST_OVER_CUR;
                 return;
@@ -308,10 +343,14 @@ void Work_Task(void)
                      ((g_cfg.ammo >= g_cfg.ammo_target) && (g_cfg.ammo > s_load_ammo0)))
             {
                 /* 前到位，或装填中余弹增加到装定值：停车后反向回退 */
+                LOG("[LOAD] done(%s) ammo=%d target=%d -> back\r\n",
+                    (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "front" : "target",
+                    g_cfg.ammo, g_cfg.ammo_target);
                 Work_StartMotion(WORK_ST_LOAD_BACK, WORK_DIR_LOAD_BACK);
             }
             else if ((now - s_start_tick) >= WORK_LOAD_TIMEOUT_MS)
             {
+                LOG("[MOT] load timeout\r\n");
                 Work_StopMotion();
                 s_state = WORK_ST_TIMEOUT;
             }
@@ -320,10 +359,12 @@ void Work_Task(void)
         case WORK_ST_LOAD_BACK:
             if (DI_IsHigh(WORK_REAR_CH) != 0U)
             {
+                LOG("[LOAD] back done\r\n");
                 Work_StopMotion();                 /* 后到位：回退结束 */
             }
             else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {
+                LOG("[MOT] back timeout\r\n");
                 Work_StopMotion();
                 s_state = WORK_ST_TIMEOUT;
             }
@@ -401,6 +442,11 @@ void Work_Task(void)
         if (EEPROM_SaveConfig() == HAL_OK)
         {
             s_ammo_dirty = 0U;
+            LOG("[EEPROM] ammo saved %d\r\n", g_cfg.ammo);
+        }
+        else
+        {
+            LOG("[EEPROM] ammo save failed\r\n");
         }
     }
 }
@@ -417,6 +463,7 @@ void Work_KeyTask(void)
         /* 装填：按一下自动运行，再次按下立即停止 */
         if ((kA != 0U) && (s_prev[0] == 0U))
         {
+            LOG("[KEY] A work\r\n");
             if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK))
             {
                 Work_StopMotion();           /* 装填/回退中再次按下：立即停止 */
@@ -431,6 +478,7 @@ void Work_KeyTask(void)
         /* 射击：按射击模式发起；连发/无限制需持续按住 */
         if ((kC != 0U) && (s_prev[2] == 0U))
         {
+            LOG("[KEY] C work\r\n");
             if (Work_CanStart() != 0U)        /* 与装填互斥 */
             {
                 switch (g_cfg.fire_mode)

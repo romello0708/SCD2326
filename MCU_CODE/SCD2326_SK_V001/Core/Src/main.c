@@ -38,6 +38,7 @@
 #include "eeprom.h"
 #include "relay.h"
 #include "work.h"
+#include "log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -110,8 +111,21 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   Global_Init();  /* 全局配置变量初始化 */
+  SEGGER_RTT_Init();          /* J-Link RTT 调试通道 */
+  LOG("\r\n[BOOT] %s SW %d.%d.%d\r\n", BOARD_NAME, SW_VERSION_MAJOR, SW_VERSION_MINOR, SW_VERSION_BUILD);
   (void)EEPROM_Init();        /* 检测 BL24C128A 是否在线 */
-  (void)EEPROM_LoadConfig();  /* 有有效配置则覆盖默认值，首次上电返回错误属正常 */
+  if (EEPROM_LoadConfig() == HAL_OK)
+  {
+    LOG("[CFG] eeprom loaded\r\n");
+  }
+  else
+  {
+    LOG("[CFG] eeprom invalid, use default\r\n");
+  }
+  LOG("[CFG] mode=%d s1=%d s2=%d fire=%d module=%d dir=%d ammo=%d target=%d pulse=%d gap=%d burst=%d lburst=%d\r\n",
+      g_cfg.work_mode, g_cfg.sensor1_type, g_cfg.sensor2_type, g_cfg.fire_mode,
+      g_cfg.module_type, g_cfg.load_dir, g_cfg.ammo, g_cfg.ammo_target,
+      g_cfg.pulse_ms, g_cfg.gap_ms, g_cfg.burst_shots, g_cfg.long_burst_shots);
   Relay_Init();   /* 按配置的传感器类型（NPN/PNP）设置继电器 */
   Motor_Init();   /* 装填电机 PWM 初始化，初始为停止状态 */
   AD_Init();      /* 电流采集初始化，需在电机停止时做零点校准 */

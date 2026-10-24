@@ -19,6 +19,7 @@
 #include "work.h"
 #include "eeprom.h"
 #include "relay.h"
+#include "log.h"
 
 /* 页面行坐标：整体下移 5px，13x13 字模，行距 15px，共 4 行 */
 #define SET_TITLE_Y      5U
@@ -160,6 +161,24 @@ static void Menu_SelectMove(int16_t dir)
     }
 }
 
+/* 当前设置项的数值（日志用） */
+static int16_t Menu_ItemValue(uint8_t item)
+{
+    switch (item)
+    {
+        case SET_ITEM_AMMO:    return (int16_t)g_cfg.ammo_target;
+        case SET_ITEM_FIRE:    return (int16_t)g_cfg.fire_mode;
+        case SET_ITEM_MODULE:  return (int16_t)g_cfg.module_type;
+        case SET_ITEM_SENSOR1: return (int16_t)g_cfg.sensor1_type;
+        case SET_ITEM_SENSOR2: return (int16_t)g_cfg.sensor2_type;
+        case SET_ITEM_DIR:     return (int16_t)g_cfg.load_dir;
+        case SET_ITEM_PULSE:   return (int16_t)g_cfg.pulse_ms;
+        case SET_ITEM_GAP:     return (int16_t)g_cfg.gap_ms;
+        case SET_ITEM_BURST:   return (int16_t)g_cfg.burst_shots;
+        default:               return (int16_t)g_cfg.long_burst_shots;
+    }
+}
+
 static void Menu_Adjust(int16_t dir)
 {
     int16_t idx;
@@ -257,13 +276,19 @@ static void Menu_Adjust(int16_t dir)
     s_dirty = 1U;
     s_cfg_dirty = 1U;
     s_save_tick = HAL_GetTick();
+    LOG("[SET] item=%d val=%d\r\n", s_sel, Menu_ItemValue(s_sel));
 
     /* 传感器类型改完立即保存，避免停在设置模式时掉电丢失 */
     if ((s_sel == SET_ITEM_SENSOR1) || (s_sel == SET_ITEM_SENSOR2))
     {
         if (EEPROM_SaveConfig() == HAL_OK)
         {
+            LOG("[EEPROM] cfg saved\r\n");
             s_cfg_dirty = 0U;
+        }
+        else
+        {
+            LOG("[EEPROM] save failed\r\n");
         }
     }
 }
@@ -401,8 +426,15 @@ static void Menu_SetKeys(uint32_t now)
         if (s_edit != 0U)
         {
             s_edit = 0U;
-            (void)EEPROM_SaveConfig();
-            s_cfg_dirty = 0U;
+            if (EEPROM_SaveConfig() == HAL_OK)
+            {
+                LOG("[EEPROM] cfg saved\r\n");
+                s_cfg_dirty = 0U;
+            }
+            else
+            {
+                LOG("[EEPROM] save failed\r\n");
+            }
         }
         else
         {
@@ -544,10 +576,12 @@ void Menu_Task(void)
             if (EEPROM_SaveConfig() == HAL_OK)
             {
                 s_cfg_dirty = 0U;
+                LOG("[EEPROM] cfg saved\r\n");
             }
             else
             {
                 s_save_tick = now;       /* 写失败稍后重试 */
+                LOG("[EEPROM] save failed\r\n");
             }
         }
 
