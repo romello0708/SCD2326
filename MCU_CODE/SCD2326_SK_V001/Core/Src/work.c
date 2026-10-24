@@ -474,8 +474,16 @@ void Work_KeyTask(void)
             }
             else if (Work_CanStart() != 0U)
             {
-                s_load_ammo0 = g_cfg.ammo;   /* 记录本次装填起点，用于余弹达标判断 */
-                Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
+                if (g_cfg.ammo >= g_cfg.ammo_target)
+                {
+                    /* 余弹已达到设置模式装定的数值：禁止再启动装填 */
+                    LOG("[LOAD] refuse: ammo=%d >= target=%d\r\n", g_cfg.ammo, g_cfg.ammo_target);
+                }
+                else
+                {
+                    s_load_ammo0 = g_cfg.ammo;   /* 记录本次装填起点，用于余弹达标判断 */
+                    Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
+                }
             }
         }
 
