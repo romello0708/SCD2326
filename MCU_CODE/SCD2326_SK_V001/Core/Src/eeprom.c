@@ -271,7 +271,7 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
         return HAL_ERROR;               /* 数据损坏 */
     }
 
-    g_cfg.motor_duty_pct = cfg.motor_duty_pct;
+    /* 电机占空比已从设置项移除，固定使用默认 90%，不再从 EEPROM 恢复 */
     g_cfg.over_current_a = cfg.over_current_a;
     g_cfg.echo_enable = cfg.echo_enable;
     g_cfg.status_print_enable = cfg.status_print_enable;
