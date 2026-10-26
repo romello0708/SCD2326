@@ -38,12 +38,11 @@
 #define SET_ITEM_SENSOR1 3U
 #define SET_ITEM_SENSOR2 4U
 #define SET_ITEM_DIR     5U     /* 装填电机方向 */
-#define SET_ITEM_DUTY    6U     /* 电机 PWM 占空比 */
-#define SET_ITEM_PULSE   7U     /* 单发脉冲时长 */
-#define SET_ITEM_GAP     8U     /* 双发间隔时长 */
-#define SET_ITEM_BURST   9U     /* 点射用弹数 */
-#define SET_ITEM_LBURST  10U    /* 长点射用弹数 */
-#define SET_ITEM_NUM     11U
+#define SET_ITEM_PULSE   6U     /* 单发脉冲时长 */
+#define SET_ITEM_GAP     7U     /* 双发间隔时长 */
+#define SET_ITEM_BURST   8U     /* 点射用弹数 */
+#define SET_ITEM_LBURST  9U     /* 长点射用弹数 */
+#define SET_ITEM_NUM     10U
 
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
@@ -173,7 +172,6 @@ static int16_t Menu_ItemValue(uint8_t item)
         case SET_ITEM_SENSOR1: return (int16_t)g_cfg.sensor1_type;
         case SET_ITEM_SENSOR2: return (int16_t)g_cfg.sensor2_type;
         case SET_ITEM_DIR:     return (int16_t)g_cfg.load_dir;
-        case SET_ITEM_DUTY:    return (int16_t)g_cfg.motor_duty_pct;
         case SET_ITEM_PULSE:   return (int16_t)g_cfg.pulse_ms;
         case SET_ITEM_GAP:     return (int16_t)g_cfg.gap_ms;
         case SET_ITEM_BURST:   return (int16_t)g_cfg.burst_shots;
@@ -241,19 +239,6 @@ static void Menu_Adjust(int16_t dir)
         case SET_ITEM_DIR:                         /* 装填电机方向 */
             g_cfg.load_dir = (g_cfg.load_dir == LOAD_DIR_FORWARD) ?
                              LOAD_DIR_REVERSE : LOAD_DIR_FORWARD;
-            break;
-
-        case SET_ITEM_DUTY:                        /* 电机 PWM 占空比 0~100 */
-            idx = (int16_t)g_cfg.motor_duty_pct + dir;
-            if (idx > 100)
-            {
-                idx = 0;
-            }
-            else if (idx < 0)
-            {
-                idx = 100;
-            }
-            g_cfg.motor_duty_pct = (uint8_t)idx;
             break;
 
         case SET_ITEM_PULSE:
@@ -369,11 +354,6 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
         case SET_ITEM_DIR:                         /* 装填电机方向 */
             OLED_ShowUTF8(0U, y, "电机方向", hl);
             ShowTextRight(y, s_dir_name[g_cfg.load_dir], edit);
-            break;
-
-        case SET_ITEM_DUTY:                        /* 电机 PWM 占空比 */
-            OLED_ShowUTF8(0U, y, "电机占空比", hl);
-            ShowNumRight(y, g_cfg.motor_duty_pct, edit);
             break;
 
         case SET_ITEM_PULSE:
