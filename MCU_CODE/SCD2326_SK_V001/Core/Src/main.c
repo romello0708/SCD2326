@@ -112,7 +112,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   Global_Init();  /* 全局配置变量初始化 */
   SEGGER_RTT_Init();          /* J-Link RTT 调试通道 */
-  LOG("\r\n[BOOT] %s SW %d.%d.%d\r\n", BOARD_NAME, SW_VERSION_MAJOR, SW_VERSION_MINOR, SW_VERSION_BUILD);
+  LOG("\r\n[BOOT] %s SW %d.%d.%d HW %s\r\n", BOARD_NAME, SW_VERSION_MAJOR, SW_VERSION_MINOR, SW_VERSION_BUILD, BOARD_HW_VERSION);
   (void)EEPROM_Init();        /* 检测 BL24C128A 是否在线 */
   if (EEPROM_LoadConfig() == HAL_OK)
   {

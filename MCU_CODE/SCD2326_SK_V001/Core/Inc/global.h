@@ -11,7 +11,7 @@ extern "C" {
 /* 系统信息宏定义                                                              */
 /*============================================================================*/
 #define SW_VERSION_MAJOR      0U
-#define SW_VERSION_MINOR      3U
+#define SW_VERSION_MINOR      1U
 #define SW_VERSION_BUILD      0U
 
 #define BOARD_NAME            "SCD2326"
