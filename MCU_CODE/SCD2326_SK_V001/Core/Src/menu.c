@@ -47,6 +47,9 @@
 /* 运行页刷新周期 */
 #define RUN_REFRESH_MS   200U
 
+/* RTT 镜像打印周期：把 OLED 当前页内容每 500ms 打印一次 */
+#define UI_LOG_PERIOD_MS 500U
+
 /* 参数改动后延时写入 EEPROM（避开连续按键），保证直接断电也不丢参数 */
 #define CFG_SAVE_DELAY_MS 300U
 
@@ -70,6 +73,22 @@ static const char * const s_dir_name[LOAD_DIR_NUM] =
     "正向", "反向"
 };
 
+/* RTT 镜像打印用的 ASCII 名称（RTT 无法显示中文，故另备一份英文/代号） */
+static const char * const s_fire_en[FIRE_MODE_NUM] =
+{
+    "UNLIMITED", "AUTO", "LONG_BURST", "BURST", "SINGLE"
+};
+
+static const char * const s_module_en[MODULE_NUM] =
+{
+    "FIRE", "SCOUT", "CAR_C", "CAR_B", "CAR_A", "8X8"
+};
+
+static const char * const s_dir_en[LOAD_DIR_NUM] =
+{
+    "FWD", "REV"
+};
+
 static uint8_t  s_mode = 0xFFU;   /* 上次绘制的挡位 */
 static uint8_t  s_sel;            /* 设置项选中位置 */
 static uint8_t  s_top;            /* 设置页滚动窗口首项 */
@@ -81,6 +100,7 @@ static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
 static uint32_t s_press_tick;     /* A/B 按下时刻（连加判定） */
 static uint32_t s_rep_tick;       /* 连加上次触发时刻 */
 static uint32_t s_refresh_tick;   /* 运行页刷新计时 */
+static uint32_t s_log_tick;       /* RTT 镜像打印计时 */
 
 /*------------------------- 字符串工具 -------------------------*/
 /* UTF-8 字符串像素宽度：ASCII 8px，汉字 15px（与 OLED_ShowUTF8 一致） */
@@ -555,6 +575,66 @@ static void Menu_DrawRun(uint8_t mode)
     OLED_Refresh();
 }
 
+/*------------------------- RTT 镜像打印 -------------------------*/
+/* 把 OLED 当前页面的内容以 ASCII 打印到 RTT（每 UI_LOG_PERIOD_MS 一次）。
+ * 三种模式与本文件 Menu_DrawSet / Menu_DrawRun 的显示项一一对应：
+ *   SET    ：标题“设置模式” + 全部 9 个设置项（含选中项/调节态/滚动位置）
+ *   WORK   ：模块型号、余弹数、射击模式、工作状态
+ *   DEBUG  ：余弹数、初始到位信号(IN_9)、到位位置信号(IN_10)
+ *   INVALID：标题“模式异常” + 模块型号
+ * 说明：RTT 不支持中文，枚举值统一用 ASCII 代号输出。 */
+static void Menu_LogUi(void)
+{
+    uint8_t     st;
+    const char *state;
+
+    switch (g_cfg.work_mode)
+    {
+        case WORK_MODE_SET:
+            /* 设置页：sel = 当前选中项，edit = 是否处于调节态，top = 可见窗口首项 */
+            LOG("[UI] SET top=%d sel=%d edit=%d fire=%s module=%s cnt=%s pos=%s dir=%s pulse=%d gap=%d burst=%d lburst=%d ammo=%d\r\n",
+                s_top, s_sel, s_edit,
+                s_fire_en[g_cfg.fire_mode], s_module_en[g_cfg.module_type],
+                s_sensor_name[g_cfg.sensor1_type], s_sensor_name[g_cfg.sensor2_type],
+                s_dir_en[g_cfg.load_dir], g_cfg.pulse_ms, g_cfg.gap_ms,
+                g_cfg.burst_shots, g_cfg.long_burst_shots, g_cfg.ammo);
+            break;
+
+        case WORK_MODE_WORK:
+            /* 工作页：工作状态与 OLED 一致（装填中/射击中/未装填），另附原始状态码 */
+            st = Work_GetState();
+            if (st == WORK_ST_LOAD)
+            {
+                state = "LOADING";
+            }
+            else if (st == WORK_ST_FIRE)
+            {
+                state = "FIRING";
+            }
+            else
+            {
+                state = "IDLE";
+            }
+            LOG("[UI] WORK module=%s ammo=%d fire=%s state=%s st=%d\r\n",
+                s_module_en[g_cfg.module_type], g_cfg.ammo,
+                s_fire_en[g_cfg.fire_mode], state, st);
+            break;
+
+        case WORK_MODE_DEBUG:
+            /* 调试页：init = 初始到位信号(前到位 IN_9)，target = 到位位置信号(后到位 IN_10) */
+            LOG("[UI] DEBUG ammo=%d init(IN9)=%d target(IN10)=%d\r\n",
+                g_cfg.ammo,
+                DI_IsHigh(WORK_FRONT_CH), DI_IsHigh(WORK_REAR_CH));
+            break;
+
+        default:
+            /* 拨动开关两路同时为高：标题显示“模式异常” */
+            LOG("[UI] INVALID module=%s ammo=%d\r\n",
+                s_module_en[g_cfg.module_type], g_cfg.ammo);
+            break;
+    }
+}
+
 /*------------------------- 对外接口 -------------------------*/
 void Menu_Init(void)
 {
@@ -568,6 +648,7 @@ void Menu_Init(void)
     s_refresh_tick = HAL_GetTick();
     s_press_tick   = s_refresh_tick;
     s_rep_tick     = s_refresh_tick;
+    s_log_tick     = s_refresh_tick;
 
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
     s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
@@ -595,6 +676,13 @@ void Menu_Task(void)
         s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
         s_prev[2] = DI_IsHigh(MENU_KEY_C_CH);
         s_dirty = 1U;
+    }
+
+    /* 把 OLED 当前页面的内容镜像到 RTT，每 500ms 一帧 */
+    if ((now - s_log_tick) >= UI_LOG_PERIOD_MS)
+    {
+        s_log_tick = now;
+        Menu_LogUi();
     }
 
     if (mode == WORK_MODE_SET)
