@@ -543,13 +543,13 @@ static void Menu_DrawRun(uint8_t mode)
     else
     {
         /* 调试模式：显示两路位置信号
-         *   初始到位 = 后到位(IN_9，WORK_REAR_CH)
-         *   到位位置 = 前到位(IN_10，WORK_FRONT_CH) */
+         *   初始到位 = 前到位(IN_9，WORK_FRONT_CH)
+         *   到位位置 = 后到位(IN_10，WORK_REAR_CH) */
         OLED_ShowUTF8(0U, SET_ROW2_Y, "初始到位信号", 0U);
-        ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
 
         OLED_ShowUTF8(0U, SET_ROW3_Y, "到位位置信号", 0U);
-        ShowTextRight(SET_ROW3_Y, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW3_Y, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
     }
 
     OLED_Refresh();

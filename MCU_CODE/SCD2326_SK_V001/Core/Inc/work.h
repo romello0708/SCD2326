@@ -14,10 +14,11 @@ extern "C" {
  *   IN_7  = 计数传感器 —— 只做“射击计数”：每个上升沿代表实际打出 1 发，
  *           余弹数 -1；装填/回退/拉栓/复位等空行程期间忽略该信号。
  *           其 NPN/PNP 类型由 RELAY_1 配置（设置模式“计数传感器类型”）。
- *   IN_9  = 位置传感器·初始到位（后到位）：装填到位后反向回退的终点，
- *           也是调试模式“拉栓”的终点。   ┐ 两路共用 RELAY_2
- *   IN_10 = 位置传感器·到位位置（前到位）：装填动作的终点、调试模式
- *           “复位”的终点。               ┘（设置模式“位置传感器类型”）
+ *   IN_9  = 位置传感器·前到位：装填正转的终点，
+ *           也是调试模式“复位”的终点；OLED 调试页第二行“初始到位信号”即此路。
+ *   IN_10 = 位置传感器·后到位：装填回退的终点，
+ *           也是调试模式“拉栓”的终点；OLED 调试页第三行“到位位置信号”即此路。
+ *   （两路位置信号共用 RELAY_2，由设置模式“位置传感器类型”选择 NPN/PNP）
  *   装填过程不再使用任何计数信号，只靠 IN_9 / IN_10 两个位置信号判断行程。
  *
  * 输出：MCU_OUT1(PA12) 高电平 = 射击（击发）
@@ -25,16 +26,16 @@ extern "C" {
 
 /* 输入通道 */
 #define WORK_COUNT_CH         7U     /* 计数传感器：射击计数（上升沿 -1 发） */
-#define WORK_FRONT_CH        10U     /* 前到位 / 到位位置：装填终点、复位终点 */
-#define WORK_REAR_CH          9U     /* 后到位 / 初始到位：回退终点、拉栓终点 */
+#define WORK_FRONT_CH         9U     /* 前到位：装填正转终点、复位终点（OLED“初始到位信号”） */
+#define WORK_REAR_CH         10U     /* 后到位：装填回退终点、拉栓终点（OLED“到位位置信号”） */
 
-/* 动作方向：装填由初始到位(IN_9)朝前到位(IN_10)运行，到位后反向退回 IN_9；
- *  实物上“FORWARD”对应朝 IN_9 的方向，因此装填要朝 IN_10 走必须用 REVERSE。
- *  调试模式的拉栓(→IN_9)=FORWARD、复位(→IN_10)=REVERSE 保持不变；
- *  实物相反时只改这三行（或在设置模式把“电机方向”设为反向）。 */
-#define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
-#define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
-#define WORK_DIR_RESET       MOTOR_STATE_REVERSE
+/* 动作方向：装填朝前到位(IN_9)运行，到位后反向退回后到位(IN_10)；
+ *  实物上“FORWARD”对应朝 IN_9 的方向，因此装填/复位用 FORWARD，
+ *  回退/拉栓用 REVERSE。实物相反时只改这三行
+ *  （或在设置模式把“电机方向”设为反向）。 */
+#define WORK_DIR_LOAD        MOTOR_STATE_FORWARD
+#define WORK_DIR_BOLT        MOTOR_STATE_REVERSE
+#define WORK_DIR_RESET       MOTOR_STATE_FORWARD
 
 /* 装填回退方向：与装填方向相反 */
 #define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
