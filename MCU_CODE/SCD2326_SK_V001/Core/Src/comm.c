@@ -8,6 +8,7 @@
 #include "usart.h"
 #include "global.h"
 #include "digital_input.h"
+#include "log.h"
 #include <string.h>
 
 volatile uint32_t comm_rx_frames   = 0;
@@ -228,7 +229,10 @@ void Comm_SendStatus(void)
     (void)Comm_Send(s_status_buf, pos);
 }
 
-/* 周期任务：按 COMM_STATUS_PERIOD_MS 打印输入状态 */
+/* 周期任务：每 COMM_STATUS_PERIOD_MS(500ms) 输出一次输入状态
+ *  - RTT：固定打印 IN_1~IN_10 的电平（1=高，0=低），方便 J-Link 在线观察，
+ *         不受串口打印开关影响；
+ *  - 串口：仍由 status_print_enable 控制，打印完整状态帧。 */
 void Comm_StatusTask(void)
 {
     uint32_t now = HAL_GetTick();
@@ -244,6 +248,11 @@ void Comm_StatusTask(void)
     }
 
     s_status_tick = now;
+
+    /* RTT 每 500ms 打印 10 路输入电平 */
+    LOG("[DI] IN1=%d IN2=%d IN3=%d IN4=%d IN5=%d IN6=%d IN7=%d IN8=%d IN9=%d IN10=%d\r\n",
+        DI_IsHigh(1U), DI_IsHigh(2U), DI_IsHigh(3U), DI_IsHigh(4U), DI_IsHigh(5U),
+        DI_IsHigh(6U), DI_IsHigh(7U), DI_IsHigh(8U), DI_IsHigh(9U), DI_IsHigh(10U));
 
     if (g_cfg.status_print_enable == 0U)
     {

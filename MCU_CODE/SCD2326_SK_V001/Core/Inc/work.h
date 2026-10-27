@@ -29,13 +29,13 @@ extern "C" {
 #define WORK_FRONT_CH         9U     /* 前到位：装填正转终点、复位终点（OLED“初始到位信号”） */
 #define WORK_REAR_CH         10U     /* 后到位：装填回退终点、拉栓终点（OLED“到位位置信号”） */
 
-/* 动作方向：装填朝前到位(IN_9)运行，到位后反向退回后到位(IN_10)；
- *  实物上“FORWARD”对应朝 IN_9 的方向，因此装填/复位用 FORWARD，
- *  回退/拉栓用 REVERSE。实物相反时只改这三行
- *  （或在设置模式把“电机方向”设为反向）。 */
-#define WORK_DIR_LOAD        MOTOR_STATE_FORWARD
-#define WORK_DIR_BOLT        MOTOR_STATE_REVERSE
-#define WORK_DIR_RESET       MOTOR_STATE_FORWARD
+/* 动作方向：装填朝前到位(IN_9)运行，到位后反向退回后到位(IN_10)。
+ *  说明：本版本按实物要求把三路方向整体取反——实物上 REVERSE 才是朝 IN_9 的方向，
+ *        因此装填/复位用 REVERSE，回退/拉栓用 FORWARD。
+ *        若还需再整体反转，可在设置模式把“电机方向”设为反向（或再次对调这三行）。 */
+#define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
+#define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
+#define WORK_DIR_RESET       MOTOR_STATE_REVERSE
 
 /* 装填回退方向：与装填方向相反 */
 #define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
