@@ -33,9 +33,9 @@ extern "C" {
  *  调试模式必须与工作模式同向：
  *      拉栓 = 装填正转方向，终点为前到位 IN_10（OLED“初始到位信号”）；
  *      复位 = 装填回退方向，终点为后到位 IN_9（OLED“到位位置信号”）。
- *  本版本再次整体反转：装填正转用 FORWARD。
+ *  本版本按实物再次整体反转：装填正转用 REVERSE。
  *  若还需整体反转，可在设置模式把“电机方向”设为反向。 */
-#define WORK_DIR_LOAD        MOTOR_STATE_FORWARD
+#define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
 
 /* 装填回退方向：与装填方向相反 */
 #define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
