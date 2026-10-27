@@ -30,15 +30,19 @@ extern "C" {
 #define WORK_REAR_CH         10U     /* 后到位：装填回退终点、拉栓终点（OLED“到位位置信号”） */
 
 /* 动作方向：装填朝前到位(IN_9)运行，到位后反向退回后到位(IN_10)。
- *  说明：本版本按实物要求把三路方向整体取反——实物上 REVERSE 才是朝 IN_9 的方向，
- *        因此装填/复位用 REVERSE，回退/拉栓用 FORWARD。
- *        若还需再整体反转，可在设置模式把“电机方向”设为反向（或再次对调这三行）。 */
+ *  调试模式必须与工作模式同向：
+ *      拉栓 = 装填正转方向，终点为前到位 IN_9（OLED“初始到位信号”）；
+ *      复位 = 装填回退方向，终点为后到位 IN_10（OLED“到位位置信号”）。
+ *  本版本按实物要求整体取反：装填正转用 REVERSE。
+ *  若还需整体反转，可在设置模式把“电机方向”设为反向。 */
 #define WORK_DIR_LOAD        MOTOR_STATE_REVERSE
-#define WORK_DIR_BOLT        MOTOR_STATE_FORWARD
-#define WORK_DIR_RESET       MOTOR_STATE_REVERSE
 
 /* 装填回退方向：与装填方向相反 */
 #define WORK_DIR_LOAD_BACK   ((WORK_DIR_LOAD == MOTOR_STATE_FORWARD) ? MOTOR_STATE_REVERSE : MOTOR_STATE_FORWARD)
+
+/* 调试模式方向：直接引用工作模式方向，保证两者永远一致 */
+#define WORK_DIR_BOLT        WORK_DIR_LOAD        /* 拉栓：与装填正转同向 */
+#define WORK_DIR_RESET       WORK_DIR_LOAD_BACK   /* 复位：与装填回退同向 */
 
 /* 射击时序：单发脉宽、双发间隔、点射/长点射发数均由设置模式装定（见 g_cfg） */
 #define WORK_FIRE_CONTINUOUS     0xFFU  /* 持续射击标记 */

@@ -17,8 +17,8 @@
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
  *
  * 调试模式（拨动开关下挡）：
- *   A 长按(>=300ms) = 拉栓：电机运行到后到位(IN_10)，松开立即停止
- *   B 长按(>=300ms) = 复位：电机运行到前到位(IN_9)，松开立即停止
+ *   A 长按(>=300ms) = 拉栓：与装填正转同向，运行到前到位(IN_9)，松开立即停止
+ *   B 长按(>=300ms) = 复位：与装填回退同向，运行到后到位(IN_10)，松开立即停止
  *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止；
  *                     余弹同样由 IN_7 计数传感器递减，各动作之间保持安全互斥
  *
@@ -398,9 +398,9 @@ void Work_Task(void)
             break;
 
         case WORK_ST_BOLT:
-            if (DI_IsHigh(WORK_REAR_CH) != 0U)
+            if (DI_IsHigh(WORK_FRONT_CH) != 0U)
             {
-                Work_StopMotion();                 /* 拉栓结束：到达后到位(IN_10) */
+                Work_StopMotion();                 /* 拉栓结束：到达前到位(IN_9) */
             }
             else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {
@@ -410,9 +410,9 @@ void Work_Task(void)
             break;
 
         case WORK_ST_RESET:
-            if (DI_IsHigh(WORK_FRONT_CH) != 0U)
+            if (DI_IsHigh(WORK_REAR_CH) != 0U)
             {
-                Work_StopMotion();                 /* 到位位置 */
+                Work_StopMotion();                 /* 复位结束：到达后到位(IN_10) */
             }
             else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {
