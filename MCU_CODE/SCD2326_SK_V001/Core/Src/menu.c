@@ -166,7 +166,7 @@ static int16_t Menu_ItemValue(uint8_t item)
 {
     switch (item)
     {
-        case SET_ITEM_AMMO:    return (int16_t)g_cfg.ammo_target;
+        case SET_ITEM_AMMO:    return (int16_t)g_cfg.ammo;
         case SET_ITEM_FIRE:    return (int16_t)g_cfg.fire_mode;
         case SET_ITEM_MODULE:  return (int16_t)g_cfg.module_type;
         case SET_ITEM_SENSOR1: return (int16_t)g_cfg.sensor1_type;
@@ -194,9 +194,10 @@ static void Menu_Adjust(int16_t dir)
     switch (s_sel)
     {
         case SET_ITEM_AMMO:
-            /* 设置页装定的是“装填目标值”，运行页显示的是实际余弹数；
+            /* 装填目标值已取消：本项直接装定“当前余弹数”（仅内存，不写 EEPROM）。
+             * 运行页显示同一个变量，射击时由 IN_7 计数递减。
              * 到达上下限后回到另一端，循环变化 */
-            idx = (int16_t)g_cfg.ammo_target + dir;
+            idx = (int16_t)g_cfg.ammo + dir;
             if (idx > (int16_t)AMMO_MAX)
             {
                 idx = (int16_t)AMMO_MIN;
@@ -205,7 +206,7 @@ static void Menu_Adjust(int16_t dir)
             {
                 idx = (int16_t)AMMO_MAX;
             }
-            g_cfg.ammo_target = (uint16_t)idx;
+            g_cfg.ammo = (uint16_t)idx;
             break;
 
         case SET_ITEM_FIRE:
@@ -328,7 +329,7 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
     {
         case SET_ITEM_AMMO:
             OLED_ShowUTF8(0U, y, "余弹数", hl);
-            ShowNumRight(y, g_cfg.ammo_target, edit);
+            ShowNumRight(y, g_cfg.ammo, edit);
             break;
 
         case SET_ITEM_FIRE:

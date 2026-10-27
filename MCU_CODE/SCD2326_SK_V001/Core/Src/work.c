@@ -479,16 +479,10 @@ void Work_KeyTask(void)
             }
             else if (Work_CanStart() != 0U)
             {
-                if (g_cfg.ammo >= g_cfg.ammo_target)
-                {
-                    /* 余弹已达到设置模式装定的数值：禁止再启动装填 */
-                    LOG("[LOAD] refuse: ammo=%d >= target=%d\r\n", g_cfg.ammo, g_cfg.ammo_target);
-                }
-                else
-                {
-                    /* 装填只走位置信号，不做计数：直接启动 */
-                    Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
-                }
+                /* 已取消“装填上限/装填目标”：不再按余弹数拦截，
+                 * 无论当前余弹多少，按 A 都直接启动一轮装填。
+                 * 装填过程只走位置信号，不做计数。 */
+                Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
             }
         }
 

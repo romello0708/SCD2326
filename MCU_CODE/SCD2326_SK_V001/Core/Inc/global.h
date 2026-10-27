@@ -25,7 +25,7 @@ extern "C" {
 /*============================================================================*/
 #define DI_NUM                10U   /* 10 路输入 IN_1~IN_10 */
 #define DI_ACTIVE_LEVEL       1U    /* 全部为高电平有效 */
-#define DI_FILTER_CNT         5U    /* 连续 5 次(5ms)电平一致才更新 */
+#define DI_FILTER_CNT         3U    /* 连续 3 次(3ms)电平一致才更新 */
 
 /*============================================================================*/
 /* 操作面板输入配置（见《装填工装简易操作说明》）                               */
@@ -116,8 +116,7 @@ typedef struct
     uint8_t  sensor2_type;          /* 传感器2：SENSOR_TYPE_NPN / SENSOR_TYPE_PNP */
 
     /* 工作/调试模式 */
-    uint16_t ammo;                  /* 实际余弹数 0~200：装填时 IN_7 递增，射击递减 */
-    uint16_t ammo_target;           /* 装填目标值 0~200：设置模式装定，余弹达到即停止装填 */
+    uint16_t ammo;                  /* 当前余弹数 0~200：射击时由 IN_7 计数递减，掉电不保存 */
     uint8_t  fire_mode;             /* 射击模式 FIRE_MODE_* */
     uint8_t  module_type;           /* 模块型号 MODULE_* */
     uint16_t shot_total;            /* 累计射击次数（仅统计） */

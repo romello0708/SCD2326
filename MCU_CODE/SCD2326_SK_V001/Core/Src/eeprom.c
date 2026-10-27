@@ -221,10 +221,8 @@ HAL_StatusTypeDef EEPROM_SaveConfig(void)
     cfg.fire_mode = g_cfg.fire_mode;
     cfg.module_type = g_cfg.module_type;
     cfg.load_dir = g_cfg.load_dir;
-    /* 余弹数 g_cfg.ammo 与累计射击次数 g_cfg.shot_total 不再掉电保存：
-     * 结构体中仍保留这两个字段以维持原有布局（其它参数不失效），写 0 占位。
-     * 实际余弹由 IN_7 计数传感器维护，上电回到默认值。 */
-    cfg.ammo_target = g_cfg.ammo_target;
+    /* 余弹数 g_cfg.ammo、装填目标值、累计射击次数均不再掉电保存：
+     * 结构体中保留这些字段以维持原有布局（其它参数不失效），写 0 占位。 */
     cfg.pulse_ms = g_cfg.pulse_ms;
     cfg.gap_ms = g_cfg.gap_ms;
     cfg.burst_shots = g_cfg.burst_shots;
@@ -281,9 +279,8 @@ HAL_StatusTypeDef EEPROM_LoadConfig(void)
     g_cfg.fire_mode = (cfg.fire_mode < FIRE_MODE_NUM) ? cfg.fire_mode : FIRE_MODE_SINGLE;
     g_cfg.module_type = (cfg.module_type < MODULE_NUM) ? cfg.module_type : MODULE_FIRE;
     g_cfg.load_dir = (cfg.load_dir == LOAD_DIR_REVERSE) ? LOAD_DIR_REVERSE : LOAD_DIR_FORWARD;
-    /* 余弹数不从 EEPROM 恢复：保持 Global_Init() 里的默认值，
-     * 之后由 IN_7 计数传感器递减。只恢复“装填目标值”。 */
-    g_cfg.ammo_target = (cfg.ammo_target > AMMO_MAX) ? AMMO_MAX : cfg.ammo_target;
+    /* 余弹数/装填目标值不从 EEPROM 恢复：保持 Global_Init() 里的默认值，
+     * 之后由 IN_7 计数传感器递减，或在设置模式手动装定。 */
 
     /* 射击时序参数：越界时回落到默认值，避免异常配置导致动作异常 */
     g_cfg.pulse_ms = ((cfg.pulse_ms < SHOT_PULSE_MIN) || (cfg.pulse_ms > SHOT_PULSE_MAX)) ?
