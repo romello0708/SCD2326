@@ -8,7 +8,7 @@
  *   单发脉冲时长、双发间隔时长、点射用弹数、长点射用弹数
  *
  * 工作模式（中挡）：显示余弹数、射击模式、工作状态（未装填/装填中/射击中）
- * 调试模式（下挡）：显示余弹数、初始到位信号(IN_9)、到位位置信号(IN_10)
+ * 调试模式（下挡）：显示余弹数、初始到位信号(IN_10)、到位位置信号(IN_9)
  *
  * 工作 / 调试模式下 A、B、C 的功能由 work.c 处理，本文件只负责显示。
  */
@@ -369,7 +369,7 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
             break;
 
         case SET_ITEM_SENSOR2:
-            /* 位置传感器（IN_9 初始到位 / IN_10 到位位置）：由 RELAY_2 选择 NPN/PNP */
+            /* 位置传感器（IN_10 初始到位 / IN_9 到位位置）：由 RELAY_2 选择 NPN/PNP */
             OLED_ShowUTF8(0U, y, "位置传感器类型", hl);
             ShowTextRight(y, s_sensor_name[g_cfg.sensor2_type], edit);
             break;
@@ -563,8 +563,8 @@ static void Menu_DrawRun(uint8_t mode)
     else
     {
         /* 调试模式：显示两路位置信号
-         *   初始到位 = 前到位(IN_9，WORK_FRONT_CH)
-         *   到位位置 = 后到位(IN_10，WORK_REAR_CH) */
+         *   初始到位 = 前到位(IN_10，WORK_FRONT_CH)
+         *   到位位置 = 后到位(IN_9，WORK_REAR_CH) */
         OLED_ShowUTF8(0U, SET_ROW2_Y, "初始到位信号", 0U);
         ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
 
@@ -580,7 +580,7 @@ static void Menu_DrawRun(uint8_t mode)
  * 三种模式与本文件 Menu_DrawSet / Menu_DrawRun 的显示项一一对应：
  *   SET    ：标题“设置模式” + 全部 9 个设置项（含选中项/调节态/滚动位置）
  *   WORK   ：模块型号、余弹数、射击模式、工作状态
- *   DEBUG  ：余弹数、初始到位信号(IN_9)、到位位置信号(IN_10)
+ *   DEBUG  ：余弹数、初始到位信号(IN_10)、到位位置信号(IN_9)
  *   INVALID：标题“模式异常” + 模块型号
  * 说明：RTT 不支持中文，枚举值统一用 ASCII 代号输出。 */
 static void Menu_LogUi(void)
@@ -621,8 +621,8 @@ static void Menu_LogUi(void)
             break;
 
         case WORK_MODE_DEBUG:
-            /* 调试页：init = 初始到位信号(前到位 IN_9)，target = 到位位置信号(后到位 IN_10) */
-            LOG("[UI] DEBUG ammo=%d init(IN9)=%d target(IN10)=%d\r\n",
+            /* 调试页：init = 初始到位信号(前到位 IN_10)，target = 到位位置信号(后到位 IN_9) */
+            LOG("[UI] DEBUG ammo=%d init(IN10)=%d target(IN9)=%d\r\n",
                 g_cfg.ammo,
                 DI_IsHigh(WORK_FRONT_CH), DI_IsHigh(WORK_REAR_CH));
             break;
