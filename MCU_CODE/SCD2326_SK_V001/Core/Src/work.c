@@ -1,27 +1,34 @@
 /* 工作 / 调试模式动作控制
  *
+ * 输入通道（V0.3 实际接线）：
+ *   IN_7  = 计数传感器（射击计数，每个上升沿余弹 -1；装填期间忽略）
+ *   IN_9  = 位置传感器·初始到位（后到位）
+ *   IN_10 = 位置传感器·到位位置（前到位）
+ *
  * 工作模式（拨动开关中挡）：
- *   A = 装填：按下后电机按设定方向转动，收到前到位信号(IN_10)或余弹达到装定值后停止，
- *       随即反向回退，收到后到位信号(IN_9)停止；前后到位信号同时有效时禁止电机动作；
- *       装填/回退过程中再次按下 A 立即停止
+ *   A = 装填：按下后电机按设定方向向前到位(IN_10)运行，收到 IN_10 后停止，
+ *       随即反向回退，收到后到位(IN_9)停止；前后到位信号同时有效时禁止电机动作；
+ *       装填/回退过程中再次按下 A 立即停止。
+ *       装填过程不做任何计数，余弹数只由射击计数传感器 IN_7 递减。
  *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出
  *   B = 无作用
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
  *
  * 调试模式（拨动开关下挡）：
- *   A 长按(>=300ms) = 拉栓：电机向后运行到初始到位(IN_9)，松开立即停止
- *   B 长按(>=300ms) = 复位：电机向前运行到到位位置(IN_10)，松开立即停止
- *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止，
- *                     余弹同样逐发递减；各动作之间保持安全互斥
+ *   A 长按(>=300ms) = 拉栓：电机运行到初始到位(IN_9)，松开立即停止
+ *   B 长按(>=300ms) = 复位：电机运行到到位位置(IN_10)，松开立即停止
+ *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止；
+ *                     余弹同样由 IN_7 计数传感器递减，各动作之间保持安全互斥
  *
  * 射击模式：
- *   无限制：按住连发，不检查、不扣减余弹
- *   连射  ：按住连发，每发扣减余弹，余弹为 0 停止
+ *   无限制：按住连发，不因余弹为 0 而停火（余弹仍按实际发数递减）
+ *   连射  ：按住连发，余弹为 0 停止
  *   长点射：每按一次 6 发
  *   点射  ：每按一次 3 发
  *   单发  ：每按一次 1 发
  *
- * 余弹：设置模式可直接装定 0~200；每轮装填期间 IN_7 的计数信号只计 1 次（上限 200）。
+ * 余弹：设置模式可直接装定目标值 0~200；实际余弹数由 IN_7 射击计数递减，
+ *       不再写入 EEPROM，掉电后回到默认值。
  */
 #include "work.h"
 #include "global.h"
@@ -37,14 +44,10 @@ static uint32_t s_tick;           /* 1ms 节拍 */
 static uint32_t s_start_tick;     /* 电机动作开始时刻 */
 static uint32_t s_fire_tick;      /* 当前脉宽/间隔起点 */
 static uint16_t s_stall_ms;       /* 电流超阈值持续时间 */
-static uint16_t s_last_cnt;       /* IN_7 上升沿计数上次值 */
+static uint16_t s_last_cnt;       /* IN_7（射击计数）上升沿计数上次值 */
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
 static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
 static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
-static uint8_t  s_ammo_dirty;     /* 1 = 余弹有未保存的变化 */
-static uint32_t s_idle_tick;      /* 最近一次非空闲时刻 */
-static uint16_t s_load_ammo0;     /* 本次装填开始时的余弹数（用于判断装填中是否增加） */
-static uint8_t  s_load_counted;   /* 1 = 本轮装填已计过一次余弹 */
 static uint8_t  s_di_front;       /* 上次前到位电平（日志用） */
 static uint8_t  s_di_rear;        /* 上次后到位电平（日志用） */
 
@@ -111,6 +114,20 @@ static uint8_t Work_PosInvalid(void)
     return 0U;
 }
 
+/* 电机是否正在动作（装填/装填回退/拉栓/复位）
+ * 用于两处：
+ *   1) 只有电机动作时才做堵转电流判定；
+ *   2) 机构动作期间忽略 IN_7 计数脉冲，避免空行程被误当成射击而扣减余弹 */
+static uint8_t Work_IsMoving(void)
+{
+    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK) ||
+        (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
+    {
+        return 1U;
+    }
+    return 0U;
+}
+
 /* 按设置模式的“电机方向”换算实际转动方向（工作/调试模式通用） */
 static uint8_t Work_ApplyDir(uint8_t dir)
 {
@@ -131,19 +148,14 @@ static uint8_t Work_CanStart(void)
     return 0U;
 }
 
-/* 打出一发：拉高输出、扣余弹、计数 */
+/* 打出一发：只负责拉高击发输出并记录脉宽起点。
+ * 余弹数不再由软件按发数扣减（原“射击计数逻辑”已取消），
+ * 改由 IN_7 计数传感器按实际打出的发数在 Work_Task 中递减。 */
 static void Work_FirePulse(void)
 {
     Work_FireOn();
     s_fire_level = 1U;
     s_fire_tick  = HAL_GetTick();
-
-    if (s_fire_unlimit == 0U)
-    {
-        g_cfg.ammo--;
-        s_ammo_dirty = 1U;
-    }
-    g_cfg.shot_total++;
     s_state = WORK_ST_FIRE;
 }
 
@@ -181,10 +193,6 @@ void Work_Init(void)
     s_fire_left    = 0U;
     s_fire_level   = 0U;
     s_fire_unlimit = 0U;
-
-    s_ammo_dirty = 0U;
-    s_idle_tick  = s_tick;
-    s_load_counted = 0U;
 
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
     s_prev[1] = DI_IsHigh(MENU_KEY_B_CH);
@@ -260,6 +268,7 @@ void Work_Task(void)
 {
     uint32_t now = HAL_GetTick();
     uint16_t cnt;
+    uint16_t delta;
     float imag;
     float iu;
 
@@ -291,27 +300,37 @@ void Work_Task(void)
         }
     }
 
-    /* IN_7：一轮装填只计一次余弹，多余上升沿忽略 */
+    /*==== IN_7 计数传感器：射击计数 ====
+     * 每检测到一个上升沿，代表机构实际完成 1 发，余弹数 -1。
+     * 处理原则：
+     *   1) 装填/装填回退/拉栓/复位属于机构空行程，这期间 IN_7 的脉冲全部忽略，
+     *      实现“装填不计数”；只有静止或射击过程中的脉冲才有效；
+     *   2) 设置模式（拨到上挡）下不扣减，便于装定参数；
+     *   3) “无限制”射击模式同样按实际发数扣减，只是不因余弹为 0 而停火；
+     *   4) 余弹最低到 AMMO_MIN(0)，不会下溢；余弹数不再写 EEPROM。
+     * delta 用无符号相减得到，计数器回绕时仍然正确。 */
     cnt = DI_GetRiseCount(WORK_COUNT_CH);
     if (cnt != s_last_cnt)
     {
-        if ((s_state == WORK_ST_LOAD) && (g_cfg.work_mode != WORK_MODE_SET) &&
-            (s_load_counted == 0U))
-        {
-            s_load_counted = 1U;
-            if (g_cfg.ammo < AMMO_MAX)
-            {
-                g_cfg.ammo++;
-            }
-            s_ammo_dirty = 1U;
-            LOG("[AMMO] %d\r\n", g_cfg.ammo);
-        }
+        delta = (uint16_t)(cnt - s_last_cnt);
         s_last_cnt = cnt;
+
+        if ((g_cfg.work_mode != WORK_MODE_SET) && (Work_IsMoving() == 0U))
+        {
+            while (delta > 0U)
+            {
+                if (g_cfg.ammo > AMMO_MIN)
+                {
+                    g_cfg.ammo--;
+                    LOG("[AMMO] %d\r\n", g_cfg.ammo);
+                }
+                delta--;
+            }
+        }
     }
 
     /* 电机动作中：总电流与 U 相取较大值做堵转判定 */
-    if ((s_state == WORK_ST_LOAD) || (s_state == WORK_ST_LOAD_BACK) ||
-        (s_state == WORK_ST_BOLT) || (s_state == WORK_ST_RESET))
+    if (Work_IsMoving() != 0U)
     {
         imag = AD_GetCurrent(AD_INDEX_ALL);
         if (imag < 0.0f) { imag = -imag; }
@@ -343,16 +362,14 @@ void Work_Task(void)
             {
                 Work_StopMotion();                 /* 前后到位同时有效：立即停止 */
             }
-            else if ((DI_IsHigh(WORK_FRONT_CH) != 0U) ||
-                     ((g_cfg.ammo >= g_cfg.ammo_target) && (g_cfg.ammo > s_load_ammo0)))
+            else if (DI_IsHigh(WORK_FRONT_CH) != 0U)
             {
-                /* 前到位，或装填中余弹增加到装定值：先立即断电再从静止反向回退。
+                /* 到达前到位(IN_10)：先立即断电，再从静止反向回退。
                  * 注意：不能直接切换方向。换向需要先把占空比按曲线降到 0（约数百 ms），
                  * 这期间电机已被限位挡住仍持续通电，会被堵转过流判定直接停机，
-                 * 表现为“到前到位就停、不反转”。此处立即关断可避免堵转电流。 */
-                LOG("[LOAD] done(%s) ammo=%d target=%d -> back\r\n",
-                    (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "front" : "target",
-                    g_cfg.ammo, g_cfg.ammo_target);
+                 * 表现为“到前到位就停、不反转”。此处立即关断可避免堵转电流。
+                 * 装填过程不计数，余弹数只在射击时由 IN_7 递减。 */
+                LOG("[LOAD] done(front) ammo=%d -> back\r\n", g_cfg.ammo);
                 Work_StopMotion();               /* 先急停，清掉斜坡与堵转计时 */
                 Work_StartMotion(WORK_ST_LOAD_BACK, WORK_DIR_LOAD_BACK);
             }
@@ -439,24 +456,8 @@ void Work_Task(void)
             break;
     }
 
-    /* 余弹掉电保存：动作结束并空闲 WORK_AMMO_SAVE_MS 后写一次 EEPROM */
-    if (s_state != WORK_ST_IDLE)
-    {
-        s_idle_tick = now;
-    }
-    else if ((s_ammo_dirty != 0U) && ((now - s_idle_tick) >= WORK_AMMO_SAVE_MS))
-    {
-        s_idle_tick = now;              /* 失败则再等一个周期重试，避免频繁阻塞 */
-        if (EEPROM_SaveConfig() == HAL_OK)
-        {
-            s_ammo_dirty = 0U;
-            LOG("[EEPROM] ammo saved %d\r\n", g_cfg.ammo);
-        }
-        else
-        {
-            LOG("[EEPROM] ammo save failed\r\n");
-        }
-    }
+    /* 余弹数不再掉电保存：这里已删除原先“空闲 5s 后写 EEPROM”的逻辑，
+     * 余弹只随 IN_7 射击计数递减，其余参数仍由设置模式保存。 */
 }
 
 /*--------------------- 按键任务（工作 / 调试模式） ---------------------*/
@@ -485,8 +486,7 @@ void Work_KeyTask(void)
                 }
                 else
                 {
-                    s_load_ammo0 = g_cfg.ammo;   /* 记录本次装填起点，用于余弹达标判断 */
-                    s_load_counted = 0U;         /* 新一轮装填，允许计数一次 */
+                    /* 装填只走位置信号，不做计数：直接启动 */
                     Work_StartMotion(WORK_ST_LOAD, WORK_DIR_LOAD);
                 }
             }

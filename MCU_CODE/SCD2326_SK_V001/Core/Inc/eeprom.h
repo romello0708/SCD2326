@@ -32,9 +32,9 @@ typedef struct
     uint8_t  fire_mode;                    /* 射击模式 FIRE_MODE_* */
     uint8_t  module_type;                  /* 模块型号 MODULE_* */
     uint8_t  load_dir;                     /* 装填电机方向：0 = 正向，1 = 反向 */
-    uint16_t ammo;                         /* 余弹数 0~200 */
-    uint16_t ammo_target;                  /* 装填目标值 0~200 */
-    uint16_t shot_total;                   /* 累计射击次数 */
+    uint16_t ammo;                         /* 保留字段：余弹数不再掉电保存，固定写 0 */
+    uint16_t ammo_target;                  /* 装填目标值 0~200（仍掉电保存） */
+    uint16_t shot_total;                   /* 保留字段：累计射击次数不再保存，固定写 0 */
     uint16_t pulse_ms;                     /* 单发脉冲时长 ms */
     uint16_t gap_ms;                       /* 双发间隔时长 ms */
     uint8_t  burst_shots;                  /* 点射用弹数 */

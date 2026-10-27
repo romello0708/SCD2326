@@ -4,11 +4,11 @@
  *   A = 向上切换设置项 / 增大数值     B = 向下切换设置项 / 减小数值
  *   C = 进入 / 退出调节；退出时自动保存到 EEPROM
  *   标题行固定，下面三行循环显示设置项：
- *   余弹数（0~200）、射击模式、模块型号、传感器1类型、传感器2类型、电机方向、
+ *   余弹数（0~200）、射击模式、模块型号、计数传感器类型、位置传感器类型、电机方向、
  *   单发脉冲时长、双发间隔时长、点射用弹数、长点射用弹数
  *
  * 工作模式（中挡）：显示余弹数、射击模式、工作状态（未装填/装填中/射击中）
- * 调试模式（下挡）：显示余弹数、初始到位信号、到位位置信号
+ * 调试模式（下挡）：显示余弹数、初始到位信号(IN_9)、到位位置信号(IN_10)
  *
  * 工作 / 调试模式下 A、B、C 的功能由 work.c 处理，本文件只负责显示。
  */
@@ -226,14 +226,14 @@ static void Menu_Adjust(int16_t dir)
             idx = (int16_t)g_cfg.sensor1_type + dir;
             if (idx < 0) { idx = (int16_t)SENSOR_TYPE_NUM - 1; }
             if (idx >= (int16_t)SENSOR_TYPE_NUM) { idx = 0; }
-            Relay_SetType(1U, (uint8_t)idx);       /* 立即作用于继电器 */
+            Relay_SetType(1U, (uint8_t)idx);       /* 计数传感器(IN_7)：立即作用于 RELAY_1 */
             break;
 
         case SET_ITEM_SENSOR2:
             idx = (int16_t)g_cfg.sensor2_type + dir;
             if (idx < 0) { idx = (int16_t)SENSOR_TYPE_NUM - 1; }
             if (idx >= (int16_t)SENSOR_TYPE_NUM) { idx = 0; }
-            Relay_SetType(2U, (uint8_t)idx);       /* 立即作用于继电器 */
+            Relay_SetType(2U, (uint8_t)idx);       /* 位置传感器(IN_9/IN_10)：立即作用于 RELAY_2 */
             break;
 
         case SET_ITEM_DIR:                         /* 装填电机方向 */
@@ -342,12 +342,14 @@ static void Menu_DrawSetItem(uint8_t item, uint8_t y)
             break;
 
         case SET_ITEM_SENSOR1:
-            OLED_ShowUTF8(0U, y, "传感器1类型", hl);
+            /* 计数传感器（接 IN_7）：只用于射击计数，由 RELAY_1 选择 NPN/PNP */
+            OLED_ShowUTF8(0U, y, "计数传感器类型", hl);
             ShowTextRight(y, s_sensor_name[g_cfg.sensor1_type], edit);
             break;
 
         case SET_ITEM_SENSOR2:
-            OLED_ShowUTF8(0U, y, "传感器2类型", hl);
+            /* 位置传感器（IN_9 初始到位 / IN_10 到位位置）：由 RELAY_2 选择 NPN/PNP */
+            OLED_ShowUTF8(0U, y, "位置传感器类型", hl);
             ShowTextRight(y, s_sensor_name[g_cfg.sensor2_type], edit);
             break;
 
@@ -539,6 +541,9 @@ static void Menu_DrawRun(uint8_t mode)
     }
     else
     {
+        /* 调试模式：显示两路位置信号
+         *   初始到位 = 后到位(IN_9，WORK_REAR_CH)
+         *   到位位置 = 前到位(IN_10，WORK_FRONT_CH) */
         OLED_ShowUTF8(0U, SET_ROW2_Y, "初始到位信号", 0U);
         ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
 
