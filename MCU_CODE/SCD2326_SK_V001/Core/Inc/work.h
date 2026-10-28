@@ -60,7 +60,7 @@ extern "C" {
 
 /* 保护 */
 #define WORK_LOAD_TIMEOUT_MS    15000U  /* 装填（正转 + 回退）最长运行时间 */
-#define WORK_MOVE_TIMEOUT_MS     5000U  /* 调试拉栓/复位最长运行时间 */
+#define WORK_MOVE_TIMEOUT_MS    15000U  /* 调试拉栓/复位最长运行时间 */
 #define WORK_STALL_MS            100U   /* 电流持续超阈值判定为堵转 */
 
 /* 状态机 */
