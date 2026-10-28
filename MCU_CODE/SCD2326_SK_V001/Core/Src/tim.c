@@ -17,6 +17,22 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
+/* tim.c —— 定时器初始化与 1ms 中断调度
+ *
+ * 本文件由 CubeMX 生成，仅补充注释；三个定时器分工：
+ *   TIM1（高级定时器）CH1/CH2 -> PA8/PA9  = 装填电机 U/V 高边 PWM，20kHz（ARR=3599，不分频）
+ *   TIM3（通用定时器）CH2/CH3 -> PA7/PB0  = 装填电机 U/V 低边 PWM，20kHz（与 TIM1 同频）
+ *   TIM2（通用定时器）无引脚     = 1ms 时基：72MHz / 72 / 1000 = 1kHz 更新中断
+ *
+ * TIM2 的更新中断是整个控制逻辑的节拍源，回调内按固定顺序执行：
+ *   1) DI_ScanIsr()         10 路采样 + 积分消抖 + 稳定上升沿计数 + 挡位解码
+ *   2) Work_LimitGuardIsr() 到限位立即关断电机（不等主循环）
+ *   3) Work_CountTask()     击发窗口判定 + IN_7 射击计数
+ * 顺序不能颠倒：后两步依赖本次扫描刚更新好的稳定电平与边沿计数。
+ *
+ * NVIC：TIM2 抢占优先级 1、子优先级 0（HAL 默认分组下属较高优先级），
+ *       保证 1ms 节拍不被 OLED/串口等长任务拖慢。
+ */
 /* Includes ------------------------------------------------------------------*/
 #include "tim.h"
 
@@ -29,7 +45,14 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
-/* TIM2 init function：72MHz/72/1000 = 1kHz → 1ms 更新中断 */
+/* TIM2 init function：72MHz/72/1000 = 1kHz → 1ms 更新中断
+ * 参数：无
+ * 返回：无
+ * 调用：上电初始化（main），在 MX_TIM1_Init / MX_TIM3_Init 之后
+ * 注意：此处只配置时基，不启动；真正开中断在 main 里 HAL_TIM_Base_Start_IT(&htim2)，
+ *       且必须在 DI_Init / Work_Init 完成之后，否则第一拍中断会在未初始化状态下执行。
+ *       分频：Prescaler = 72-1 → 计数时钟 1MHz；Period = 1000-1 → 每 1000 计数溢出一次 = 1ms。
+ *       引脚：TIM2 无外部引脚，纯粹作为软件节拍。 */
 void MX_TIM2_Init(void)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -58,7 +81,15 @@ void MX_TIM2_Init(void)
   }
 }
 
-/* TIM1 init function */
+/* TIM1 init function
+ * 参数：无
+ * 返回：无
+ * 调用：上电初始化（main），在 MX_SPI2_Init 之后、Motor_Init 之前
+ * 注意：TIM1 是高级定时器，U/V 两相高边使用 CH1/CH2（PA8/PA9）；
+ *       DeadTime 配置为 0 —— 因为本方案并非同一 TIM 的互补输出，
+ *       四路门极的互锁与死区完全由软件保证（见 motor.c）；
+ *       比较值初始为 0，PWM 通道由 Motor_Init 里 HAL_TIM_PWM_Start 打开。
+ */
 void MX_TIM1_Init(void)
 {
 
@@ -122,7 +153,14 @@ void MX_TIM1_Init(void)
   HAL_TIM_MspPostInit(&htim1);
 
 }
-/* TIM3 init function */
+/* TIM3 init function
+ * 参数：无
+ * 返回：无
+ * 调用：上电初始化（main），紧随 MX_TIM1_Init 之后
+ * 注意：TIM3 输出 U/V 两相低边（CH2->PA7、CH3->PB0），与 TIM1 同为 20kHz；
+ *       两个定时器各自独立启动，相位不保证对齐，靠软件“先关后开 + 2ms 死区”保证安全；
+ *       TIM3 没有 BreakDeadTime 配置（通用定时器无此功能）。
+ */
 void MX_TIM3_Init(void)
 {
 
@@ -171,7 +209,13 @@ void MX_TIM3_Init(void)
 
 }
 
-/* TIM2 时基中断的时钟与 NVIC 配置 */
+/* TIM2 时基中断的时钟与 NVIC 配置
+ * 参数：tim_baseHandle —— HAL 传入的时基句柄，仅处理 TIM2
+ * 返回：无
+ * 调用：HAL_TIM_Base_Init(&htim2) 内部自动回调（MX_TIM2_Init 中）
+ * 注意：抢占优先级 1、子优先级 0；比 SysTick 默认最低优先级高，
+ *       使 1ms 扫描与限位急停可以打断主循环里的长任务（OLED、EEPROM、RTT）
+ */
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
 {
   if(tim_baseHandle->Instance==TIM2)
@@ -183,6 +227,14 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
 }
 
 /* 1ms 定时中断回调：输入扫描（含消抖） + 射击计数
+ * 参数：htim —— 触发回调的定时器句柄，这里只处理 TIM2
+ * 返回：无
+ * 调用：TIM2 更新中断（每 1ms 一次），由 HAL 在 HAL_TIM_IRQHandler 中回调
+ * 注意：三步的顺序固定且不能交换：
+ *       1) DI_ScanIsr 先把稳定电平与边沿计数更新好；
+ *       2) Work_LimitGuardIsr 用最新电平判断限位，立即断电；
+ *       3) Work_CountTask 用最新边沿计数扣减余弹。
+ *       中断内禁止打印/延时；工作模式下的余弹变化由主循环 Work_Task 负责打印。
  * 说明：TIM2 只做时基，不占用任何引脚；扫描周期由硬件保证为 1ms，
  *       不受主循环任务耗时影响。 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -195,6 +247,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   }
 }
 
+/* PWM 通道的 MSP 初始化：打开 TIM1 / TIM3 的外设时钟
+ * 参数：tim_pwmHandle —— HAL 传入的 PWM 句柄，只处理 TIM1 / TIM3
+ * 返回：无
+ * 调用：HAL_TIM_PWM_Init 内部自动回调（MX_TIM1_Init / MX_TIM3_Init 中）
+ * 注意：这里只开时钟，GPIO 复用配置在 HAL_TIM_MspPostInit 中完成
+ */
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* tim_pwmHandle)
 {
 
@@ -221,6 +279,13 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* tim_pwmHandle)
   /* USER CODE END TIM3_MspInit 1 */
   }
 }
+/* PWM 引脚复用配置（HAL_TIM_MspPostInit 回调）
+ * 参数：timHandle —— TIM1 时配置 PA8/PA9；TIM3 时配置 PA7/PB0
+ * 返回：无
+ * 调用：MX_TIM1_Init / MX_TIM3_Init 末尾自动调用
+ * 注意：四路均为 GPIO_MODE_AF_PP 推挽复用、低速档；速度档只影响边沿斜率，
+ *       20kHz 下低速档即可，且有利于降低驱动端干扰
+ */
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)
 {
 
@@ -273,6 +338,12 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)
 
 }
 
+/* PWM 通道的 MSP 反初始化：关闭 TIM1 / TIM3 外设时钟
+ * 参数：tim_pwmHandle —— HAL 传入的 PWM 句柄，只处理 TIM1 / TIM3
+ * 返回：无
+ * 调用：HAL_TIM_PWM_DeInit 内部自动回调；本项目正常运行不会调用
+ * 注意：仅关时钟，不恢复 GPIO 复用配置
+ */
 void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* tim_pwmHandle)
 {
 

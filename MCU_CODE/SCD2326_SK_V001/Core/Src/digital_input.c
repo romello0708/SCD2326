@@ -18,6 +18,14 @@
  *     3) 每路只多一个字节状态，中断内运算量恒定（加减各一次比较）。
  *   代价：从电平稳定变化到输出翻转需要本路积分深度 ms 的时间
  *         （普通通道 DI_DEBOUNCE_CNT=4ms，限位通道 IN_9/IN_10 用 2ms）。
+ *
+ * 运行上下文：
+ *   DI_Init    —— 上电初始化（main，在启动 TIM2 之前），把“上电时的实际电平”直接当作稳定值；
+ *   DI_ScanIsr —— TIM2 1ms 更新中断的第一件事，后续 Work_LimitGuardIsr / Work_CountTask
+ *                 都基于本次扫描的结果；
+ *   DI_IsHigh 等查询函数 —— 主循环（menu / work / comm）与中断内均可调用，只读静态数组。
+ *
+ * 关键参数：DI_DEBOUNCE_CNT = 4（普通）、DI_DEBOUNCE_LIMIT_CNT = 2（限位），单位 1ms 采样。
  */
 #include "digital_input.h"
 #include "global.h"
@@ -55,6 +63,13 @@ static const uint8_t s_deb[DI_NUM] =
     DI_DEBOUNCE_LIMIT_CNT    /* IN_10：初始到位信号 */
 };
 
+/* 上电初始化：以各通道当前实际电平作为消抖初值
+ * 参数：无
+ * 返回：无
+ * 调用：上电初始化（main），在 DI_ScanIsr 开始运行之前、Work_Init 之前
+ * 注意：积分值同时置到对应边界（高 → 满量程，低 → 0），
+ *       避免 TIM2 启动后的第一拍把“上电前已存在的电平”误判成一次上升沿
+ */
 void DI_Init(void)
 {
     uint8_t i;
@@ -79,7 +94,14 @@ void DI_Init(void)
     }
 }
 
-/* TIM2 1ms 中断内调用：采样 + 积分式消抖 + 稳定上升沿计数 */
+/* TIM2 1ms 中断内调用：采样 + 积分式消抖 + 稳定上升沿计数
+ * 参数：无
+ * 返回：无
+ * 调用：TIM2 1ms 更新中断的第一项（HAL_TIM_PeriodElapsedCallback）
+ * 注意：中断上下文，只做 GPIO 读与整数运算，耗时固定且很短；
+ *       每拍都会刷新 g_cfg.di_raw（原始电平）与 g_cfg.di_state（去抖后位图），
+ *       g_cfg.di_rise_cnt[] 只在“稳定值由低翻高”时 +1，因此抖动不会多计数
+ */
 void DI_ScanIsr(void)
 {
     uint8_t i;
@@ -153,6 +175,12 @@ void DI_ScanIsr(void)
     }
 }
 
+/* 读取某一路去抖后的稳定电平
+ * 参数：ch —— 通道号 1~10（对应 IN_1~IN_10），越界返回 0
+ * 返回：1 = 高电平有效，0 = 低电平 / 通道号非法
+ * 调用：主循环（work.c / menu.c / comm.c）与 TIM2 中断（挡位解码、限位判定）
+ * 注意：读的是 s_stable[]，与本拍扫描结果一致；单字节读取天然原子
+ */
 uint8_t DI_IsHigh(uint8_t ch)
 {
     if ((ch < 1U) || (ch > DI_NUM))
@@ -163,6 +191,12 @@ uint8_t DI_IsHigh(uint8_t ch)
     return s_stable[ch - 1U];
 }
 
+/* 统计当前为高电平的通道数量
+ * 参数：无
+ * 返回：0~10
+ * 调用：主循环（状态打印/调试查看）
+ * 注意：以去抖后的稳定值为准；用于快速判断是否有输入动作
+ */
 uint8_t DI_GetHighCount(void)
 {
     uint8_t i;
@@ -179,16 +213,34 @@ uint8_t DI_GetHighCount(void)
     return cnt;
 }
 
+/* 读取去抖后的通道位图
+ * 参数：无
+ * 返回：16 位位图，bit0 = IN_1，bit9 = IN_10，高位恒为 0
+ * 调用：主循环（RTT 状态打印）
+ * 注意：与 DI_GetRaw 对照可看出消抖是否正在起作用
+ */
 uint16_t DI_GetState(void)
 {
     return g_cfg.di_state;
 }
 
+/* 读取最近一次扫描的原始电平位图（未经消抖）
+ * 参数：无
+ * 返回：16 位位图，bit0 = IN_1，bit9 = IN_10
+ * 调用：主循环（调试/诊断）
+ * 注意：仅在 DI_ScanIsr 中整字刷新；读取时可能刚好跨过更新，允许有 1ms 误差
+ */
 uint16_t DI_GetRaw(void)
 {
     return g_cfg.di_raw;
 }
 
+/* 读取某一路的稳定上升沿累计次数
+ * 参数：ch —— 通道号 1~10，越界返回 0
+ * 返回：累加计数（16 位，自然回绕）
+ * 调用：Work_CountTask（中断，IN_7 射击计数）、Work_Init（记录基准）
+ * 注意：调用者应保存上次值并用无符号相减求增量，可正确处理回绕
+ */
 uint16_t DI_GetRiseCount(uint8_t ch)
 {
     if ((ch < 1U) || (ch > DI_NUM))
@@ -199,6 +251,13 @@ uint16_t DI_GetRiseCount(uint8_t ch)
     return g_cfg.di_rise_cnt[ch - 1U];
 }
 
+/* 清零所有通道的上升沿计数
+ * 参数：无
+ * 返回：无
+ * 调用：调试/诊断时手工调用；正常运行流程不调用
+ * 注意：若在运行中调用，Work_CountTask 的 s_last_cnt 会与新计数不一致，
+ *       可能产生一次“虚假增量”，建议仅在停机状态下使用
+ */
 void DI_ClearCounters(void)
 {
     uint8_t i;

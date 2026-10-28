@@ -1,3 +1,20 @@
+/* work.h —— 工作 / 调试模式动作控制接口
+ *
+ * 模块职责：
+ *   1) 定义动作状态机（装填 / 回退 / 拉栓 / 复位 / 射击 / 超时 / 过流）；
+ *   2) 定义输入通道号、逻辑方向、保护时间与射击计数窗口参数；
+ *   3) 声明 work.c 的初始化、主循环任务、中断任务与状态查询接口。
+ *
+ * 运行上下文：
+ *   Work_Init       —— 上电初始化（DI_Init 之后、TIM2 启动之前）
+ *   Work_Task       —— 主循环 1ms 任务（状态机、到位/超时/堵转、射击时序）
+ *   Work_CountTask / Work_LimitGuardIsr —— TIM2 1ms 中断（计数窗口/限位急停）
+ *   Work_KeyTask    —— 主循环按键任务
+ *   Work_Abort      —— 切挡时立即停机
+ *
+ * 依赖：通道号与 g_cfg（global.h）中的参数配合使用；本文件不含任何代码。
+ */
+
 #ifndef __WORK_H
 #define __WORK_H
 
@@ -67,7 +84,16 @@ extern "C" {
 #define WORK_CNT_DELAY_MS        200U   /* 击发信号结束后屏蔽时间 */
 #define WORK_CNT_HOLD_MS         600U   /* 无击发后计数窗口保持时间 */
 
-/* 状态机 */
+/* 状态机
+ * 0 IDLE       : 空闲，可接受新动作或射击
+ * 1 LOAD       : 装填正转，终点 IN_9
+ * 2 BOLT       : 调试拉栓，终点 IN_9，松开即停
+ * 3 RESET      : 调试复位，终点 IN_10，松开即停
+ * 4 FIRE       : 射击中，按 pulse_ms/gap_ms 时序推进
+ * 5 TIMEOUT    : 动作超时（15s），可再次按键启动
+ * 6 OVER_CUR   : 堵转/过流保护停机，可再次按键启动
+ * 7 LOAD_BACK  : 装填到位后回退，终点 IN_10
+ * 说明：只有 0/5/6 允许启动新动作（见 work.c 的 Work_CanStart） */
 #define WORK_ST_IDLE         0U
 #define WORK_ST_LOAD         1U
 #define WORK_ST_BOLT         2U
@@ -77,6 +103,13 @@ extern "C" {
 #define WORK_ST_OVER_CUR     6U
 #define WORK_ST_LOAD_BACK    7U    /* 装填到位后回退到初始到位 */
 
+/* 接口约定：
+ *   Work_Init        上电初始化，必须在 DI_Init 之后、TIM2 启动之前调用
+ *   Work_Task        主循环 1ms：到位/超时/堵转判定、射击时序
+ *   Work_CountTask   TIM2 1ms 中断：击发窗口判定 + IN_7 射击计数（-1 发/上升沿）
+ *   Work_LimitGuardIsr TIM2 1ms 中断：到限位立即断电，不等主循环
+ *   Work_KeyTask     主循环：工作/调试模式按键动作（边沿 + 长按）
+ *   Work_Abort       立即停止电机与射击输出（切挡时用），并复位按键快照 */
 void     Work_Init(void);
 void     Work_Task(void);        /* 主循环 1ms：到位/超时/堵转判定、射击时序 */
 void     Work_CountTask(void);   /* TIM2 1ms 中断：击发窗口判定 + IN_7 射击计数 */
@@ -84,9 +117,9 @@ void     Work_LimitGuardIsr(void); /* TIM2 1ms 中断：到限位立即断电，
 void     Work_KeyTask(void);     /* 主循环：工作/调试模式按键动作 */
 void     Work_Abort(void);       /* 立即停止电机与射击输出 */
 
-uint8_t  Work_GetState(void);
-uint8_t  Work_IsFiring(void);
-uint16_t Work_GetAmmo(void);
+uint8_t  Work_GetState(void);     /* 返回 WORK_ST_* 当前状态（供界面显示） */
+uint8_t  Work_IsFiring(void);     /* 返回 1 = 正在射击 */
+uint16_t Work_GetAmmo(void);      /* 返回当前余弹数 0~200（中断内可能正在递减） */
 
 #ifdef __cplusplus
 }
