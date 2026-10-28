@@ -52,6 +52,9 @@ static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
 static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
 static uint8_t  s_di_init;        /* 上次初始到位电平（日志用） */
 static uint8_t  s_di_target;      /* 上次到位位置电平（日志用） */
+static uint8_t  s_cnt_sess;       /* 1 = 工作模式计数窗口已打开（击发后 600ms 内有效） */
+static uint32_t s_fire_last_tick; /* 最近一次击发信号有效（高电平）时刻 */
+static uint32_t s_fire_fall_tick; /* 最近一次击发信号有效时刻，用作“击发结束”基准 */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -225,6 +228,10 @@ void Work_Abort(void)
     s_stall_ms   = 0U;
     s_state      = WORK_ST_IDLE;
 
+    /* 计数窗口复位：切挡后必须重新由击发信号打开 */
+    s_cnt_sess       = 0U;
+    s_fire_fall_tick = now;
+
     /* 切挡时同步按键快照：仍按住的键视为已触发，松开后才能再次启动 */
     key[0] = DI_IsHigh(MENU_KEY_A_CH);
     key[1] = DI_IsHigh(MENU_KEY_B_CH);
@@ -271,6 +278,8 @@ void Work_Task(void)
     uint32_t now = HAL_GetTick();
     uint16_t cnt;
     uint16_t delta;
+    uint8_t  allow;
+    uint8_t  fire_lvl;
     float imag;
     float iu;
 
@@ -302,14 +311,33 @@ void Work_Task(void)
         }
     }
 
+    /*==== 工作模式射击计数窗口 ====
+     * 规则（调试模式不使用本窗口，保持原有逻辑）：
+     *   1) 计数开始：击发信号 MCU_OUT1 有效（高电平）→ 打开计数窗口；
+     *   2) 计数条件：击发信号结束后 200ms 内的 IN_7 忽略，之后的上升沿才计数；
+     *   3) 计数停止：距最后一次击发信号 600ms 内再无击发 → 关闭窗口，IN_7 不再计数。 */
+    fire_lvl = (s_fire_level != 0U) ? 1U : 0U;
+
+    if (fire_lvl != 0U)
+    {
+        s_cnt_sess       = 1U;             /* 击发有效：打开/维持计数窗口 */
+        s_fire_last_tick = now;
+        s_fire_fall_tick = now;            /* 高电平期间持续刷新，等效“击发结束”时刻 */
+    }
+    else if ((s_cnt_sess != 0U) && ((now - s_fire_last_tick) >= WORK_CNT_HOLD_MS))
+    {
+        s_cnt_sess = 0U;                   /* 600ms 无击发：关闭计数窗口 */
+    }
+
     /*==== IN_7 计数传感器：射击计数 ====
      * 每检测到一个上升沿，代表机构实际完成 1 发，余弹数 -1。
      * 处理原则：
-     *   1) 装填/装填回退/拉栓/复位属于机构空行程，这期间 IN_7 的脉冲全部忽略，
-     *      实现“装填不计数”；只有静止或射击过程中的脉冲才有效；
-     *   2) 设置模式（拨到上挡）下不扣减，便于装定参数；
-     *   3) “无限制”射击模式同样按实际发数扣减，只是不因余弹为 0 而停火；
-     *   4) 余弹最低到 AMMO_MIN(0)，不会下溢；余弹数不再写 EEPROM。
+     *   1) 工作模式：只在上面的计数窗口内、且距击发结束 >= 200ms 时计数；
+     *   2) 调试模式：保持原逻辑 —— 静止且非设置模式下计数；
+     *   3) 装填/回退/拉栓/复位属于机构空行程，期间 IN_7 忽略；
+     *   4) 设置模式下不扣减，便于装定参数；
+     *   5) “无限制”射击模式同样按实际发数扣减，只是不因余弹为 0 而停火；
+     *   6) 余弹最低到 AMMO_MIN(0)，不会下溢；余弹数不写 EEPROM。
      * delta 用无符号相减得到，计数器回绕时仍然正确。 */
     cnt = DI_GetRiseCount(WORK_COUNT_CH);
     if (cnt != s_last_cnt)
@@ -317,7 +345,17 @@ void Work_Task(void)
         delta = (uint16_t)(cnt - s_last_cnt);
         s_last_cnt = cnt;
 
-        if ((g_cfg.work_mode != WORK_MODE_SET) && (Work_IsMoving() == 0U))
+        if (g_cfg.work_mode == WORK_MODE_WORK)
+        {
+            allow = ((s_cnt_sess != 0U) &&
+                     ((now - s_fire_fall_tick) >= WORK_CNT_DELAY_MS)) ? 1U : 0U;
+        }
+        else
+        {
+            allow = ((g_cfg.work_mode != WORK_MODE_SET) && (Work_IsMoving() == 0U)) ? 1U : 0U;
+        }
+
+        if (allow != 0U)
         {
             while (delta > 0U)
             {

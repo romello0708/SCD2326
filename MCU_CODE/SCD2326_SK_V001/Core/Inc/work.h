@@ -63,6 +63,10 @@ extern "C" {
 #define WORK_MOVE_TIMEOUT_MS    15000U  /* 调试拉栓/复位最长运行时间 */
 #define WORK_STALL_MS            100U   /* 电流持续超阈值判定为堵转 */
 
+/* 工作模式射击计数窗口（IN_7） */
+#define WORK_CNT_DELAY_MS        200U   /* 击发信号结束后屏蔽时间 */
+#define WORK_CNT_HOLD_MS         600U   /* 无击发后计数窗口保持时间 */
+
 /* 状态机 */
 #define WORK_ST_IDLE         0U
 #define WORK_ST_LOAD         1U
