@@ -2,14 +2,14 @@
  *
  * 输入通道（V0.3 实际接线）：
  *   IN_7  = 计数传感器（射击计数，每个上升沿余弹 -1；装填/动作期间忽略）
- *   IN_10 = 位置传感器·前到位（装填正转的终点、调试“拉栓”的终点，
+ *   IN_10 = 位置传感器·初始到位信号（装填回退的终点、调试“复位”的终点，
  *           OLED 调试页“初始到位信号”）
- *   IN_9  = 位置传感器·后到位（装填回退的终点、调试“复位”的终点，
+ *   IN_9  = 位置传感器·到位位置信号（装填正转的终点、调试“拉栓”的终点，
  *           OLED 调试页“到位位置信号”）
  *
  * 工作模式（拨动开关中挡）：
- *   A = 装填：按下后电机朝前到位(IN_9)运行，收到 IN_9 后停止，
- *       随即反向回退，收到后到位(IN_10)停止；前后到位信号同时有效时禁止电机动作；
+ *   A = 装填：按下后电机朝到位位置(IN_9)运行，收到 IN_9 后停止，
+ *       随即反向回退，收到初始到位(IN_10)停止；两路位置信号同时有效时禁止电机动作；
  *       装填/回退过程中再次按下 A 立即停止。
  *       装填过程不做任何计数，余弹数只由射击计数传感器 IN_7 递减。
  *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出
@@ -17,8 +17,8 @@
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
  *
  * 调试模式（拨动开关下挡）：
- *   A 长按(>=300ms) = 拉栓：与装填正转同向，运行到前到位(IN_10)，松开立即停止
- *   B 长按(>=300ms) = 复位：与装填回退同向，运行到后到位(IN_9)，松开立即停止
+ *   A 长按(>=300ms) = 拉栓：与装填正转同向，运行到到位位置(IN_9)，松开立即停止
+ *   B 长按(>=300ms) = 复位：与装填回退同向，运行到初始到位(IN_10)，松开立即停止
  *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止；
  *                     余弹同样由 IN_7 计数传感器递减，各动作之间保持安全互斥
  *
@@ -50,8 +50,8 @@ static uint16_t s_last_cnt;       /* IN_7（射击计数）上升沿计数上次
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
 static uint32_t s_hold_tick[3];   /* A/B/C 按下时刻，用于长按判定 */
 static uint8_t  s_hold_act[3];    /* A/B/C 长按已触发标记 */
-static uint8_t  s_di_front;       /* 上次前到位电平（日志用） */
-static uint8_t  s_di_rear;        /* 上次后到位电平（日志用） */
+static uint8_t  s_di_init;        /* 上次初始到位电平（日志用） */
+static uint8_t  s_di_target;      /* 上次到位位置电平（日志用） */
 
 static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
@@ -109,7 +109,7 @@ static uint8_t Work_FireReady(void)
 /* 前后到位信号同时有效：位置异常，禁止电机动作 */
 static uint8_t Work_PosInvalid(void)
 {
-    if ((DI_IsHigh(WORK_FRONT_CH) != 0U) && (DI_IsHigh(WORK_REAR_CH) != 0U))
+    if ((DI_IsHigh(WORK_INIT_CH) != 0U) && (DI_IsHigh(WORK_TARGET_CH) != 0U))
     {
         return 1U;
     }
@@ -207,8 +207,8 @@ void Work_Init(void)
     s_hold_act[1]  = 0U;
     s_hold_act[2]  = 0U;
 
-    s_di_front = DI_IsHigh(WORK_FRONT_CH);
-    s_di_rear  = DI_IsHigh(WORK_REAR_CH);
+    s_di_init   = DI_IsHigh(WORK_INIT_CH);
+    s_di_target = DI_IsHigh(WORK_TARGET_CH);
 }
 
 void Work_Abort(void)
@@ -291,14 +291,14 @@ void Work_Task(void)
 
     /* 到位信号变化打印 */
     {
-        uint8_t f = DI_IsHigh(WORK_FRONT_CH);
-        uint8_t r = DI_IsHigh(WORK_REAR_CH);
+        uint8_t i = DI_IsHigh(WORK_INIT_CH);
+        uint8_t t = DI_IsHigh(WORK_TARGET_CH);
 
-        if ((f != s_di_front) || (r != s_di_rear))
+        if ((i != s_di_init) || (t != s_di_target))
         {
-            s_di_front = f;
-            s_di_rear  = r;
-            LOG("[DI] front=%d rear=%d\r\n", f, r);
+            s_di_init   = i;
+            s_di_target = t;
+            LOG("[DI] init=%d target=%d\r\n", i, t);
         }
     }
 
@@ -364,14 +364,14 @@ void Work_Task(void)
             {
                 Work_StopMotion();                 /* 前后到位同时有效：立即停止 */
             }
-            else if (DI_IsHigh(WORK_FRONT_CH) != 0U)
+            else if (DI_IsHigh(WORK_TARGET_CH) != 0U)
             {
-                /* 到达前到位(IN_10)：先立即断电，再从静止反向回退。
+                /* 到达到位位置(IN_9)：先立即断电，再从静止反向回退。
                  * 注意：不能直接切换方向。换向需要先把占空比按曲线降到 0（约数百 ms），
                  * 这期间电机已被限位挡住仍持续通电，会被堵转过流判定直接停机，
                  * 表现为“到前到位就停、不反转”。此处立即关断可避免堵转电流。
                  * 装填过程不计数，余弹数只在射击时由 IN_7 递减。 */
-                LOG("[LOAD] done(front) ammo=%d -> back\r\n", g_cfg.ammo);
+                LOG("[LOAD] done(target) ammo=%d -> back\r\n", g_cfg.ammo);
                 Work_StopMotion();               /* 先急停，清掉斜坡与堵转计时 */
                 Work_StartMotion(WORK_ST_LOAD_BACK, WORK_DIR_LOAD_BACK);
             }
@@ -384,12 +384,12 @@ void Work_Task(void)
             break;
 
         case WORK_ST_LOAD_BACK:
-            if (DI_IsHigh(WORK_REAR_CH) != 0U)
+            if (DI_IsHigh(WORK_INIT_CH) != 0U)
             {
                 LOG("[LOAD] back done\r\n");
-                Work_StopMotion();                 /* 后到位：回退结束 */
+                Work_StopMotion();                 /* 初始到位：回退结束 */
             }
-            else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
+            else if ((now - s_start_tick) >= WORK_LOAD_TIMEOUT_MS)
             {
                 LOG("[MOT] back timeout\r\n");
                 Work_StopMotion();
@@ -398,9 +398,9 @@ void Work_Task(void)
             break;
 
         case WORK_ST_BOLT:
-            if (DI_IsHigh(WORK_FRONT_CH) != 0U)
+            if (DI_IsHigh(WORK_TARGET_CH) != 0U)
             {
-                Work_StopMotion();                 /* 拉栓结束：到达前到位(IN_10) */
+                Work_StopMotion();                 /* 拉栓结束：到达到位位置(IN_9) */
             }
             else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {
@@ -410,9 +410,9 @@ void Work_Task(void)
             break;
 
         case WORK_ST_RESET:
-            if (DI_IsHigh(WORK_REAR_CH) != 0U)
+            if (DI_IsHigh(WORK_INIT_CH) != 0U)
             {
-                Work_StopMotion();                 /* 复位结束：到达后到位(IN_9) */
+                Work_StopMotion();                 /* 复位结束：到达初始到位(IN_10) */
             }
             else if ((now - s_start_tick) >= WORK_MOVE_TIMEOUT_MS)
             {

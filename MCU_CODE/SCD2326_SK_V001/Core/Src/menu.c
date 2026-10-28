@@ -563,13 +563,13 @@ static void Menu_DrawRun(uint8_t mode)
     else
     {
         /* 调试模式：显示两路位置信号
-         *   初始到位 = 前到位(IN_10，WORK_FRONT_CH)
-         *   到位位置 = 后到位(IN_9，WORK_REAR_CH) */
+         *   初始到位 = IN_10（WORK_INIT_CH）
+         *   到位位置 = IN_9（WORK_TARGET_CH） */
         OLED_ShowUTF8(0U, SET_ROW2_Y, "初始到位信号", 0U);
-        ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_FRONT_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW2_Y, (DI_IsHigh(WORK_INIT_CH) != 0U) ? "有" : "无", 0U);
 
         OLED_ShowUTF8(0U, SET_ROW3_Y, "到位位置信号", 0U);
-        ShowTextRight(SET_ROW3_Y, (DI_IsHigh(WORK_REAR_CH) != 0U) ? "有" : "无", 0U);
+        ShowTextRight(SET_ROW3_Y, (DI_IsHigh(WORK_TARGET_CH) != 0U) ? "有" : "无", 0U);
     }
 
     OLED_Refresh();
@@ -624,7 +624,7 @@ static void Menu_LogUi(void)
             /* 调试页：init = 初始到位信号(前到位 IN_10)，target = 到位位置信号(后到位 IN_9) */
             LOG("[UI] DEBUG ammo=%d init(IN10)=%d target(IN9)=%d\r\n",
                 g_cfg.ammo,
-                DI_IsHigh(WORK_FRONT_CH), DI_IsHigh(WORK_REAR_CH));
+                DI_IsHigh(WORK_INIT_CH), DI_IsHigh(WORK_TARGET_CH));
             break;
 
         default:

@@ -17,11 +17,11 @@ extern "C" {
 #define MOTOR_PWM_FULL       (MOTOR_PWM_PERIOD)  /* 常通比较值，必须为 ARR+1 */
 #define MOTOR_DUTY_DEFAULT   3240U               /* 默认占空比 90% */
 
-/* 加减速曲线：每 10ms 变化 120 个计数(约 3.33%)，0→90% 约 270ms。
+/* 加减速曲线：每 10ms 变化 200 个计数(约 5.6%)，0→90% 约 170ms。
  * 数值越大启停越猛：过大会造成启动电流冲击/机构抖动，
  * 过小则装填动作起停迟滞；按实物手感调整本常量即可。 */
 #define MOTOR_CURVE_PERIOD_MS 10U
-#define MOTOR_CURVE_STEP      120U
+#define MOTOR_CURVE_STEP      200U
 
 /* 换向前全关的等待时间，需大于一个 PWM 周期(50us)，保证上下桥不同时导通 */
 #define MOTOR_DIR_GUARD_MS    2U
