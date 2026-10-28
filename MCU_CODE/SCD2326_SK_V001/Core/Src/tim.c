@@ -21,11 +21,42 @@
 #include "tim.h"
 
 /* USER CODE BEGIN 0 */
-
+#include "digital_input.h"
+#include "work.h"
 /* USER CODE END 0 */
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+
+/* TIM2 init function：72MHz/72/1000 = 1kHz → 1ms 更新中断 */
+void MX_TIM2_Init(void)
+{
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 72 - 1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 1000 - 1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
 
 /* TIM1 init function */
 void MX_TIM1_Init(void)
@@ -138,6 +169,29 @@ void MX_TIM3_Init(void)
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
 
+}
+
+/* TIM2 时基中断的时钟与 NVIC 配置 */
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
+{
+  if(tim_baseHandle->Instance==TIM2)
+  {
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    HAL_NVIC_SetPriority(TIM2_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(TIM2_IRQn);
+  }
+}
+
+/* 1ms 定时中断回调：输入扫描（含消抖） + 射击计数
+ * 说明：TIM2 只做时基，不占用任何引脚；扫描周期由硬件保证为 1ms，
+ *       不受主循环任务耗时影响。 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim->Instance == TIM2)
+  {
+    DI_ScanIsr();      /* 10 路输入采样 + 3ms 连续一致消抖 + 上升沿计数 */
+    Work_CountTask();  /* 击发信号(MCU_OUT1)窗口内的 IN_7 射击计数 */
+  }
 }
 
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* tim_pwmHandle)

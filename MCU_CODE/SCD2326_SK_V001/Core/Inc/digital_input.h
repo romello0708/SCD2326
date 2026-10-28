@@ -8,7 +8,7 @@ extern "C" {
 #include "main.h"
 
 void      DI_Init(void);
-void      DI_Task(void);                  /* 1ms 周期扫描 + 去抖 */
+void      DI_ScanIsr(void);               /* TIM2 1ms 中断内调用：扫描 + 消抖 + 上升沿计数 */
 uint8_t   DI_IsHigh(uint8_t ch);          /* ch: 1~10，返回 1=高电平 */
 uint8_t   DI_GetHighCount(void);
 uint16_t  DI_GetState(void);              /* 去抖后的位图，bit0 = IN_1 */

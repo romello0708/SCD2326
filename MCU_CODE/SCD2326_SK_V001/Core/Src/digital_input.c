@@ -2,7 +2,8 @@
  * 硬件（均为高电平有效，GPIO 已在 MX_GPIO_Init 中配置为输入）：
  *   IN_1  PA15   IN_2  PB3    IN_3  PB4    IN_4  PB5    IN_5  PB6
  *   IN_6  PB7    IN_7  PB1    IN_8  PA6    IN_9  PA5    IN_10 PA4
- * 扫描：1ms 一次，连续 DI_FILTER_CNT 次电平一致才更新稳定值，抑制抖动。
+ * 扫描：由 TIM2 1ms 更新中断调用，连续 DI_FILTER_CNT 次(3ms)电平一致才更新稳定值，
+ *       抖动期间计数器清零重新计时，抑制触点/传感器抖动造成的误计数。
  */
 #include "digital_input.h"
 #include "global.h"
@@ -29,7 +30,6 @@ static const DI_Pin_t s_di_pin[DI_NUM] =
 
 static uint8_t  s_stable[DI_NUM];
 static uint8_t  s_filter[DI_NUM];
-static uint32_t s_task_tick;
 
 void DI_Init(void)
 {
@@ -40,22 +40,13 @@ void DI_Init(void)
         s_stable[i] = 0U;
         s_filter[i] = 0U;
     }
-
-    s_task_tick = HAL_GetTick();
 }
 
-/* 1ms 周期任务：采样 + 去抖 + 上升沿计数 */
-void DI_Task(void)
+/* TIM2 1ms 中断内调用：采样 + 消抖 + 稳定上升沿计数 */
+void DI_ScanIsr(void)
 {
     uint8_t i;
     uint8_t raw;
-    uint32_t now = HAL_GetTick();
-
-    if (now == s_task_tick)
-    {
-        return;
-    }
-    s_task_tick = now;
 
     g_cfg.di_raw = 0U;
 

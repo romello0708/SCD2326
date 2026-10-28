@@ -78,7 +78,8 @@ extern "C" {
 #define WORK_ST_LOAD_BACK    7U    /* 装填到位后回退到初始到位 */
 
 void     Work_Init(void);
-void     Work_Task(void);        /* 1ms：到位/超时/堵转判定、射击时序、IN_7 射击计数 */
+void     Work_Task(void);        /* 主循环 1ms：到位/超时/堵转判定、射击时序 */
+void     Work_CountTask(void);   /* TIM2 1ms 中断：击发窗口判定 + IN_7 射击计数 */
 void     Work_KeyTask(void);     /* 主循环：工作/调试模式按键动作 */
 void     Work_Abort(void);       /* 立即停止电机与射击输出 */
 

@@ -108,6 +108,7 @@ int main(void)
   MX_SPI2_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
+  MX_TIM2_Init();      /* TIM2：1ms 时基，不占用引脚，仅做输入扫描与射击计数的节拍 */
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   Global_Init();  /* 全局配置变量初始化 */
@@ -136,6 +137,12 @@ int main(void)
   }
   DI_Init();      /* 10 路数字输入扫描初始化 */
   Work_Init();    /* 工作/调试模式动作初始化：电机停止、射击输出拉低 */
+  /* TIM2 1ms 更新中断启动：中断内完成 10 路输入扫描（3ms 消抖）与 IN_7 射击计数。
+   * 放在 DI_Init / Work_Init 之后启动，保证扫描状态与计数基准已就绪。 */
+  if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
   OLED_Init();    /* OLED 上电时序与显示配置 */
   Menu_Init();    /* 三级菜单初始化 */
   /* USER CODE END 2 */
@@ -149,11 +156,12 @@ int main(void)
     /* USER CODE BEGIN 3 */
     Motor_Task();   /* 1ms 周期：加减速曲线、换向死区、PWM 输出 */
     AD_Task();      /* 1ms 周期：电流采样、中值滤波、换算 */
-    Work_Task();    /* 1ms 周期：装填/拉栓/复位到位、超时、堵转、余弹计数 */
+    Work_Task();    /* 1ms 周期：装填/拉栓/复位到位、超时、堵转判定、射击时序 */
     Work_KeyTask(); /* 按键动作：工作模式装填/射击，调试模式拉栓/复位/射击 */
     Comm_Task();    /* 串口回传测试：收到的帧原样发回 */
     Comm_StatusTask(); /* 500ms 打印一次 10 路输入状态与工作模式 */
-    DI_Task();      /* 1ms 周期：10 路输入扫描与去抖 */
+    /* 输入扫描与射击计数已移入 TIM2 1ms 中断（DI_ScanIsr + Work_CountTask），
+     * 主循环不再调用，避免与中断重复扫描、重复计数。 */
     Global_Task();  /* 1s 周期：运行时间等系统计数 */
     Menu_Task();    /* 菜单按键处理与页面刷新 */
   }
