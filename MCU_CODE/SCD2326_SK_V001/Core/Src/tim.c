@@ -189,8 +189,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM2)
   {
-    DI_ScanIsr();      /* 10 路输入采样 + 3ms 连续一致消抖 + 上升沿计数 */
-    Work_CountTask();  /* 击发信号(MCU_OUT1)窗口内的 IN_7 射击计数 */
+    DI_ScanIsr();          /* 10 路输入采样 + 积分式消抖 + 上升沿计数 */
+    Work_LimitGuardIsr();  /* 到限位(IN_9/IN_10)立即断电，不等主循环 */
+    Work_CountTask();      /* 击发信号(MCU_OUT1)窗口内的 IN_7 射击计数 */
   }
 }
 

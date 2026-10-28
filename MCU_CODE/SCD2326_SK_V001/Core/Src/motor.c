@@ -10,19 +10,33 @@
 
 Motor_t motor;
 
-/* 四路门极全部关闭 */
+/* 四路门极全部关闭
+ * 注意：TIM2 1ms 中断里的限位急停（Work_LimitGuardIsr）也会调用本函数，
+ * 如果它正好插在下面 4 次比较值写入的中间，剩余几次写入会把已经关断的桥臂
+ * 重新打开（例如先关 VH 被急停清零后，再继续写 VL 又会导通）。
+ * 因此这里用 PRIMASK 短暂关中断，保证 4 次写入的原子性（仅几微秒）。 */
 static void Motor_OutputOff(void)
 {
+    uint32_t primask = __get_PRIMASK();
+
+    __disable_irq();
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);  /* UH */
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);  /* UL */
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);  /* VH */
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);  /* VL */
+    __set_PRIMASK(primask);
 }
 
-/* 按状态和占空比输出：同一桥臂始终只有一只管子导通 */
+/* 按状态和占空比输出：同一桥臂始终只有一只管子导通
+ * 同样需要保证 4 次比较值写入不被限位急停插断，见 Motor_OutputOff 的说明。 */
 static void Motor_Output(uint8_t state, uint16_t duty)
 {
+    uint32_t primask;
+
     if (duty > MOTOR_PWM_FULL) { duty = MOTOR_PWM_FULL; }
+
+    primask = __get_PRIMASK();
+    __disable_irq();
 
     switch (state)
     {
@@ -46,6 +60,8 @@ static void Motor_Output(uint8_t state, uint16_t duty)
             Motor_OutputOff();
             break;
     }
+
+    __set_PRIMASK(primask);
 }
 
 /* 加减速曲线：每个 MOTOR_CURVE_PERIOD_MS 改变一步 */

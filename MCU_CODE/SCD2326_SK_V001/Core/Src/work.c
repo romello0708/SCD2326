@@ -351,6 +351,34 @@ void Work_CountTask(void)
     }
 }
 
+/*--------------------- 限位急停（TIM2 1ms 中断内调用） ---------------------*/
+/* 到限位时立刻关断四路门极，不经过主循环。
+ * 原因：Work_Task 在主循环里跑，可能正被 OLED 整屏刷新（SPI 1024 字节约 4ms）、
+ *       EEPROM 写页（约 5ms）或 RTT 打印阻塞，若只在 Work_Task 里判到位，
+ *       电机会多走 0~10ms，叠加消抖后停止点明显滞后。
+ * 这里只做“停机”这一件事，不改状态机：
+ *   正转（装填 / 拉栓，WORK_DIR_LOAD）    终点 = IN_9 到位位置信号；
+ *   反转（回退 / 复位，WORK_DIR_LOAD_BACK）终点 = IN_10 初始到位信号。
+ * 停机后 Work_Task 仍能在同一个位置信号上完成状态切换（装填转回退、动作结束等），
+ * 逻辑与原来完全一致，只是断电更早。 */
+void Work_LimitGuardIsr(void)
+{
+    if (motor.state == WORK_DIR_LOAD)
+    {
+        if (DI_IsHigh(WORK_TARGET_CH) != 0U)
+        {
+            Motor_EmergencyStop();
+        }
+    }
+    else if (motor.state == WORK_DIR_LOAD_BACK)
+    {
+        if (DI_IsHigh(WORK_INIT_CH) != 0U)
+        {
+            Motor_EmergencyStop();
+        }
+    }
+}
+
 /*--------------------- 1ms 任务 ---------------------*/
 void Work_Task(void)
 {

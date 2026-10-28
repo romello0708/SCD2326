@@ -16,7 +16,8 @@
  *     2) 两个翻转门限分别在两端，中间区间保持原状态，形成天然滞回，
  *        边沿附近的抖动不会被反复判成上升沿（IN_7 射击计数不会多算）；
  *     3) 每路只多一个字节状态，中断内运算量恒定（加减各一次比较）。
- *   代价：从电平稳定变化到输出翻转需要 DI_DEBOUNCE_CNT ms 的积分时间。
+ *   代价：从电平稳定变化到输出翻转需要本路积分深度 ms 的时间
+ *         （普通通道 DI_DEBOUNCE_CNT=4ms，限位通道 IN_9/IN_10 用 2ms）。
  */
 #include "digital_input.h"
 #include "global.h"
@@ -42,7 +43,17 @@ static const DI_Pin_t s_di_pin[DI_NUM] =
 };
 
 static uint8_t  s_stable[DI_NUM];   /* 消抖后的稳定电平 */
-static uint8_t  s_integ[DI_NUM];    /* 积分值 0 ~ DI_DEBOUNCE_CNT */
+static uint8_t  s_integ[DI_NUM];    /* 积分值 0 ~ 本路消抖深度 */
+
+/* 每路消抖深度（单位 1ms 采样）：按键、计数通道抗扰优先，用 DI_DEBOUNCE_CNT；
+ * 限位通道 IN_9/IN_10 决定停机快慢，用更浅的 DI_DEBOUNCE_LIMIT_CNT。 */
+static const uint8_t s_deb[DI_NUM] =
+{
+    DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT,
+    DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT, DI_DEBOUNCE_CNT,
+    DI_DEBOUNCE_LIMIT_CNT,   /* IN_9：到位位置信号 */
+    DI_DEBOUNCE_LIMIT_CNT    /* IN_10：初始到位信号 */
+};
 
 void DI_Init(void)
 {
@@ -55,7 +66,7 @@ void DI_Init(void)
     {
         raw = (HAL_GPIO_ReadPin(s_di_pin[i].port, s_di_pin[i].pin) == GPIO_PIN_SET) ? 1U : 0U;
         s_stable[i] = raw;
-        s_integ[i]  = (raw != 0U) ? DI_DEBOUNCE_CNT : 0U;
+        s_integ[i]  = (raw != 0U) ? s_deb[i] : 0U;
 
         if (raw != 0U)
         {
@@ -84,10 +95,10 @@ void DI_ScanIsr(void)
             g_cfg.di_raw |= (uint16_t)(1U << i);
         }
 
-        /* 积分：高电平累加、低电平递减，两端饱和 */
+        /* 积分：高电平累加、低电平递减，两端饱和（上限 = 本路消抖深度） */
         if (raw != 0U)
         {
-            if (s_integ[i] < DI_DEBOUNCE_CNT)
+            if (s_integ[i] < s_deb[i])
             {
                 s_integ[i]++;
             }
@@ -98,7 +109,7 @@ void DI_ScanIsr(void)
         }
 
         /* 只有积分到达两端才翻转稳定值；中间区间保持原状态（滞回） */
-        if ((s_stable[i] == 0U) && (s_integ[i] >= DI_DEBOUNCE_CNT))
+        if ((s_stable[i] == 0U) && (s_integ[i] >= s_deb[i]))
         {
             s_stable[i] = 1U;
             g_cfg.di_rise_cnt[i]++;          /* 只在稳定上升沿计数 */
