@@ -12,22 +12,22 @@
  *       随即反向回退，收到初始到位(IN_10)停止；两路位置信号同时有效时禁止电机动作；
  *       装填/回退过程中再次按下 A 立即停止。
  *       装填过程不做任何计数，余弹数只由射击计数传感器 IN_7 递减。
- *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出
+ *   C = 射击：按设置模式选定的射击模式，经 MCU_OUT1 输出有效电平
  *   B = 无作用
  *   装填与射击互斥：装填过程中不响应射击，射击过程中不响应装填
  *
  * 调试模式（拨动开关下挡）：
  *   A 长按(>=300ms) = 拉栓：与装填正转同向，运行到到位位置(IN_9)，松开立即停止
  *   B 长按(>=300ms) = 复位：与装填回退同向，运行到初始到位(IN_10)，松开立即停止
- *   C 长按(>=300ms) = 射击：MCU_OUT1 按固定时序连续输出，松开立即停止；
+ *   C 长按(>=300ms) = 射击：MCU_OUT1 持续输出有效电平，松开立即停止；
  *                     余弹同样由 IN_7 计数传感器递减，各动作之间保持安全互斥
  *
- * 射击模式：
- *   无限制：按住连发，不因余弹为 0 而停火（余弹仍按实际发数递减）
- *   连射  ：按住连发，余弹为 0 停止
- *   长点射：每按一次 6 发
- *   点射  ：每按一次 3 发
- *   单发  ：每按一次 1 发
+ * 射击模式与输出方式（非单发模式均为“持续有效电平”，只有单发是单个脉冲）：
+ *   无限制：按住期间 MCU_OUT1 持续为高，松开才拉低；不受余弹限制（余弹仍按实际发数递减）
+ *   连射  ：按住期间持续为高，松开或余弹减到 0 时拉低
+ *   长点射：按下后持续为高，IN_7 计满“长点射用弹数”或松开时拉低（先到先停）
+ *   点射  ：按下后持续为高，IN_7 计满“点射用弹数”或松开时拉低（先到先停）
+ *   单发  ：按一次输出一个 g_cfg.pulse_ms 宽的高电平脉冲
  *
  * 余弹：设置模式可直接装定当前余弹数 0~200；实际余弹数由 IN_7 射击计数递减，
  *       不写入 EEPROM，掉电后回到默认值。
@@ -48,9 +48,10 @@
  *   WORK_LOAD_TIMEOUT_MS   15s     装填（正转）超时
  *   WORK_MOVE_TIMEOUT_MS   15s     回退 / 拉栓 / 复位超时
  *   WORK_STALL_MS          100ms   电流持续超阈值判为堵转
- *   WORK_CNT_DELAY_MS      200ms   击发信号结束后屏蔽 IN_7
+ *   WORK_CNT_DELAY_MS      200ms   击发信号开始后屏蔽 IN_7（躲开击发动作自身的抖动）
  *   WORK_CNT_HOLD_MS       600ms   无击发后关闭计数窗口
- *   单发脉宽 / 双发间隔：g_cfg.pulse_ms、g_cfg.gap_ms（设置模式可调）。
+ *   单发脉宽：g_cfg.pulse_ms（设置模式可调，仅单发模式使用）。
+ *   g_cfg.gap_ms（双发间隔）在“持续电平输出”方式下已不再参与射击时序。
  */
 #include "work.h"
 #include "global.h"
@@ -64,7 +65,7 @@ static uint8_t  s_state;          /* WORK_ST_* */
 static uint8_t  s_last_mode;      /* 上次工作模式，用于切挡中止 */
 static uint32_t s_tick;           /* 1ms 节拍 */
 static uint32_t s_start_tick;     /* 电机动作开始时刻 */
-static uint32_t s_fire_tick;      /* 当前脉宽/间隔起点 */
+static uint32_t s_fire_tick;      /* 单发脉冲起点（仅脉冲式单发使用） */
 static uint16_t s_stall_ms;       /* 电流超阈值持续时间 */
 static uint16_t s_last_cnt;       /* IN_7（射击计数）上升沿计数上次值 */
 static uint8_t  s_prev[3];        /* A/B/C 上次电平 */
@@ -74,21 +75,24 @@ static uint8_t  s_di_init;        /* 上次初始到位电平（日志用） */
 static uint8_t  s_di_target;      /* 上次到位位置电平（日志用） */
 static uint8_t  s_cnt_sess;       /* 1 = 工作模式计数窗口已打开（击发后 600ms 内有效） */
 static uint32_t s_fire_last_tick; /* 最近一次击发信号有效（高电平）时刻：窗口保持计时基准 */
-static uint32_t s_fire_fall_tick; /* 最近一次击发信号有效时刻，用作“击发结束”基准：
-                                   * 击发为高期间每 1ms 刷新一次，因此它等价于“击发下降沿时刻”，
-                                   * 窗口内的 IN_7 需等 now - s_fire_fall_tick >= 200ms 才计数，
+static uint32_t s_fire_rise_tick; /* 本次击发信号“上升沿”时刻（窗口打开那一拍记录）：
+                                   * 持续电平输出没有下降沿，故以击发起点为基准，
+                                   * 该时刻起 WORK_CNT_DELAY_MS(200ms) 内的 IN_7 忽略，
                                    * 用于躲开击发动作本身的机械抖动/余振 */
 static uint16_t s_ammo_dbg;       /* 上次打印的余弹数（主循环侧变化打印用） */
 
-static uint8_t  s_fire_left;      /* 剩余发数，WORK_FIRE_CONTINUOUS 表示持续 */
+static uint8_t  s_fire_shots;     /* 本次射击目标发数，WORK_FIRE_CONTINUOUS(0xFF) = 持续到松开 */
+static uint8_t  s_fire_done;      /* 本次射击已发出数（由 IN_7 计数在 Work_CountTask 中递增） */
 static uint8_t  s_fire_level;     /* 1 = MCU_OUT1 当前为高 */
 static uint8_t  s_fire_unlimit;   /* 1 = 不检查、不扣减余弹 */
+static uint8_t  s_fire_pulse;     /* 1 = 脉冲式输出（单发）；0 = 持续有效电平（其余模式） */
 
 /*--------------------- 输出 ---------------------*/
 /* 拉高击发输出（MCU_OUT1）
  * 参数：无
  * 返回：无
- * 调用：Work_FirePulse，在“开始打一发”时调用（主循环 Work_Task/Work_KeyTask 上下文）
+ * 调用：Work_FirePulse / Work_FireHold（开始输出）、Work_Task 持续式维持电平
+ *       （主循环 Work_Task/Work_KeyTask 上下文）
  * 注意：只改 GPIO，不改状态机；状态切换由调用者负责
  */
 static void Work_FireOn(void)
@@ -129,19 +133,21 @@ static void Work_StopMotion(void)
 /* 结束射击：关输出并回到空闲
  * 参数：无
  * 返回：无
- * 调用：Work_FireStart（余弹为 0 时）、Work_Task 射击序列结束、Work_KeyTask 松开连发键
- * 注意：同时清掉剩余发数与电平标记；若当前不在 FIRE 态（例如装填中途调用），
- *       只关输出不动状态机，避免误改其它动作的状态
+ * 调用：Work_FireStart（余弹为 0 时）、Work_Task 射击结束条件成立、Work_KeyTask 松开按键
+ * 注意：同时清掉目标发数、已发数、电平标记与脉冲标志；
+ *       若当前不在 FIRE 态（例如装填中途调用），只关输出不动状态机，避免误改其它动作的状态
  */
 static void Work_FireStop(void)
 {
     if (s_state == WORK_ST_FIRE)
     {
-        LOG("[FIRE] stop ammo=%d\r\n", g_cfg.ammo);
+        LOG("[FIRE] stop ammo=%d done=%d\r\n", g_cfg.ammo, s_fire_done);
     }
     Work_FireOff();
     s_fire_level = 0U;
-    s_fire_left  = 0U;
+    s_fire_shots = 0U;
+    s_fire_done  = 0U;
+    s_fire_pulse = 0U;
     if (s_state == WORK_ST_FIRE)
     {
         s_state = WORK_ST_IDLE;
@@ -151,7 +157,7 @@ static void Work_FireStop(void)
 /* 是否允许再打一发
  * 参数：无
  * 返回：1 = 可以打（无限制模式恒为 1；否则要求 g_cfg.ammo > AMMO_MIN），0 = 余弹耗尽
- * 调用：Work_FireStart、Work_Task 的射击间隔分支
+ * 调用：Work_FireStart、Work_Task 的持续输出分支（余弹耗尽判停）
  * 注意：只读判断，不修改余弹；余弹实际扣减在 Work_CountTask（中断）里按 IN_7 完成
  */
 static uint8_t Work_FireReady(void)
@@ -228,13 +234,12 @@ static uint8_t Work_CanStart(void)
     return 0U;
 }
 
-/* 打出一发：只负责拉高击发输出并记录脉宽起点。
+/* 单发模式：拉高击发输出并记录脉冲起点，由 Work_Task 计时到 g_cfg.pulse_ms 后拉低
  * 参数：无
  * 返回：无
- * 调用：Work_FireStart（第一发）、Work_Task 间隔结束（后续发）
- * 注意：余弹数不再由软件按发数扣减（原“射击计数逻辑”已取消），
- *       改由 IN_7 计数传感器按实际打出的发数在 Work_CountTask（TIM2 中断）中递减。
- *       这里只把状态置为 FIRE 并记录 s_fire_tick，脉宽/间隔由 Work_Task 计时。 */
+ * 调用：Work_FireStart（s_fire_pulse != 0 时）
+ * 注意：这是唯一保留“脉冲式”输出的模式（按一次只输出一个高电平脉冲）；
+ *       余弹扣减仍由 IN_7 计数传感器在 Work_CountTask（TIM2 中断）中完成 */
 static void Work_FirePulse(void)
 {
     Work_FireOn();
@@ -243,20 +248,35 @@ static void Work_FirePulse(void)
     s_state = WORK_ST_FIRE;
 }
 
-/* 启动射击序列：shots = 发数，WORK_FIRE_CONTINUOUS 为按住连发
- * 参数：shots   —— 本次要打出的发数（1~10，或 WORK_FIRE_CONTINUOUS=0xFF 表示持续到松开）
+/* 持续输出模式：拉高击发输出并一直保持，直到满足结束条件（松开 / 计满发数 / 余弹耗尽）
+ * 参数：无
+ * 返回：无
+ * 调用：Work_FireStart（s_fire_pulse == 0 时：点射/长点射/连射/无限制、调试射击）
+ * 注意：只在这里拉高一次；后续是否拉低完全由 Work_Task 的 WORK_ST_FIRE 分支判定 */
+static void Work_FireHold(void)
+{
+    Work_FireOn();
+    s_fire_level = 1U;
+    s_state = WORK_ST_FIRE;
+}
+
+/* 启动射击：shots = 目标发数，WORK_FIRE_CONTINUOUS 为持续到松开
+ * 参数：shots   —— 本次要打出的发数（1~n，或 WORK_FIRE_CONTINUOUS=0xFF 表示持续）
  *       unlimit —— 1 = 无限制模式（不检查、不扣减余弹），0 = 受余弹限制
+ *       pulse   —— 1 = 脉冲式输出（单发）；0 = 持续有效电平（其余模式）
  * 返回：无
  * 调用：Work_KeyTask（工作模式按 C、调试模式长按 C）
- * 注意：先记录发数与无限制标志再判断余弹，是为了让 Work_FireStop 能统一清理；
+ * 注意：先记录参数再判断余弹，是为了让 Work_FireStop 能统一清理；
  *       余弹为 0 时直接调用 Work_FireStop 结束（不会留下半启动状态）
  */
-static void Work_FireStart(uint8_t shots, uint8_t unlimit)
+static void Work_FireStart(uint8_t shots, uint8_t unlimit, uint8_t pulse)
 {
-    LOG("[FIRE] start mode=%d shots=%d unlim=%d ammo=%d\r\n",
-        g_cfg.fire_mode, shots, unlimit, g_cfg.ammo);
-    s_fire_left    = shots;
+    LOG("[FIRE] start mode=%d shots=%d unlim=%d pulse=%d ammo=%d\r\n",
+        g_cfg.fire_mode, shots, unlimit, pulse, g_cfg.ammo);
+    s_fire_shots   = shots;
+    s_fire_done    = 0U;
     s_fire_unlimit = unlimit;
+    s_fire_pulse   = pulse;
 
     if (Work_FireReady() == 0U)
     {
@@ -264,7 +284,14 @@ static void Work_FireStart(uint8_t shots, uint8_t unlimit)
         return;
     }
 
-    Work_FirePulse();
+    if (pulse != 0U)
+    {
+        Work_FirePulse();                /* 单发：输出一个脉冲 */
+    }
+    else
+    {
+        Work_FireHold();                 /* 其余模式：立即持续输出有效电平 */
+    }
 }
 
 /*--------------------- 对外：初始化 / 中止 ---------------------*/
@@ -288,14 +315,16 @@ void Work_Init(void)
     s_stall_ms   = 0U;
     s_last_cnt   = DI_GetRiseCount(WORK_COUNT_CH);  /* 记下上电时的边沿计数，作为增量基线 */
 
-    s_fire_left    = 0U;
+    s_fire_shots   = 0U;
+    s_fire_done    = 0U;
     s_fire_level   = 0U;
     s_fire_unlimit = 0U;
+    s_fire_pulse   = 0U;
 
     /* 射击计数窗口：上电时关闭，只由击发信号打开 */
     s_cnt_sess       = 0U;
     s_fire_last_tick = s_tick;
-    s_fire_fall_tick = s_tick;
+    s_fire_rise_tick = s_tick;
     s_ammo_dbg       = g_cfg.ammo;
 
     s_prev[0] = DI_IsHigh(MENU_KEY_A_CH);
@@ -331,13 +360,15 @@ void Work_Abort(void)
     Motor_EmergencyStop();
 
     s_fire_level = 0U;
-    s_fire_left  = 0U;
+    s_fire_shots = 0U;
+    s_fire_done  = 0U;
+    s_fire_pulse = 0U;
     s_stall_ms   = 0U;
     s_state      = WORK_ST_IDLE;
 
     /* 计数窗口复位：切挡后必须重新由击发信号打开 */
     s_cnt_sess       = 0U;
-    s_fire_fall_tick = now;
+    s_fire_rise_tick = now;
 
     /* 切挡时同步按键快照：仍按住的键视为已触发，松开后才能再次启动 */
     key[0] = DI_IsHigh(MENU_KEY_A_CH);
@@ -399,11 +430,14 @@ static void Work_StartMotion(uint8_t state, uint8_t dir)
  *
  * 工作模式计数规则：
  *   开始：击发信号有效（高电平）；
- *   条件：击发信号结束后 200ms 内的 IN_7 忽略，之后的上升沿才计数；
+ *   条件：击发信号出现（上升沿）后 200ms 内的 IN_7 忽略，之后的上升沿才计数；
+ *         因为非单发模式改为“持续有效电平”，击发期间没有下降沿，
+ *         所以屏蔽基准取击发起点（窗口打开那一拍记录），而不是“击发结束”；
  *   停止：距最后一次击发 600ms 内再无击发信号 → 关闭窗口，IN_7 不再计数。
  * 调试模式：保持原逻辑 —— 非设置模式且电机静止（空行程脉冲忽略）时计数。
  * 设置模式：不计数，便于装定参数。
  * 余弹最低到 AMMO_MIN(0) 不会下溢；“无限制”射击模式同样按实际发数递减。
+ * 每次计数同时累加 s_fire_done（本次已发出数），供点射/长点射“计满设定发数”判停。
  *
  * 参数：无
  * 返回：无
@@ -421,9 +455,12 @@ void Work_CountTask(void)
     /*==== 1) 击发信号 → 计数窗口 ====*/
     if (s_fire_level != 0U)
     {
+        if (s_cnt_sess == 0U)
+        {
+            s_fire_rise_tick = now;        /* 窗口打开那一拍：记录击发起点（200ms 屏蔽基准） */
+        }
         s_cnt_sess       = 1U;             /* 击发有效：打开/维持计数窗口 */
         s_fire_last_tick = now;
-        s_fire_fall_tick = now;            /* 高电平期间持续刷新，等效“击发结束”时刻 */
     }
     else if ((s_cnt_sess != 0U) && ((now - s_fire_last_tick) >= WORK_CNT_HOLD_MS))
     {
@@ -443,7 +480,7 @@ void Work_CountTask(void)
     if (g_cfg.work_mode == WORK_MODE_WORK)
     {
         allow = ((s_cnt_sess != 0U) &&
-                 ((now - s_fire_fall_tick) >= WORK_CNT_DELAY_MS)) ? 1U : 0U;
+                 ((now - s_fire_rise_tick) >= WORK_CNT_DELAY_MS)) ? 1U : 0U;
     }
     else
     {
@@ -461,6 +498,10 @@ void Work_CountTask(void)
         if (g_cfg.ammo > AMMO_MIN)
         {
             g_cfg.ammo--;
+        }
+        if (s_fire_done < 0xFFU)
+        {
+            s_fire_done++;               /* 累计本次射击已发出数（点射/长点射据此判停） */
         }
         delta--;
     }
@@ -650,39 +691,37 @@ void Work_Task(void)
             break;
 
         case WORK_ST_FIRE:
-            /* 射击时序：高电平段计 g_cfg.pulse_ms，低电平段计 g_cfg.gap_ms。
-             * s_fire_left 只在“一个脉宽真正结束”时减 1（连发标记 0xFF 不减），
-             * 因此点射/长点射/单发都按设定发数打完；间隔结束时若剩余发数为 0
-             * 或余弹已耗尽（Work_FireReady 为 0）则结束整个序列 */
-            if (s_fire_level != 0U)
+            /* 射击输出：
+             *   脉冲式（单发，s_fire_pulse != 0）：高电平保持 g_cfg.pulse_ms 后结束；
+             *   持续式（其余模式）：MCU_OUT1 一直保持高，满足以下任一条件才拉低——
+             *     ① 余弹耗尽（连射/点射/长点射，Work_FireReady 为 0）；
+             *     ② 已发出数达到设定发数（点射/长点射，s_fire_done >= s_fire_shots）；
+             *     ③ 松开按键（由 Work_KeyTask 调用 Work_FireStop）。
+             * 注意：持续式不再有“脉宽/间隔”交替，g_cfg.pulse_ms / gap_ms 均不参与。 */
+            if (s_fire_pulse != 0U)
             {
-                /* 脉宽结束 */
                 if ((now - s_fire_tick) >= g_cfg.pulse_ms)
                 {
-                    Work_FireOff();
-                    s_fire_level = 0U;
-                    s_fire_tick  = now;
-
-                    if ((s_fire_left != WORK_FIRE_CONTINUOUS) && (s_fire_left > 0U))
-                    {
-                        s_fire_left--;
-                    }
+                    Work_FireStop();               /* 单发：脉冲结束即停 */
                 }
+            }
+            else if (s_fire_level == 0U)
+            {
+                Work_FireOn();                     /* 持续式：维持输出为高 */
+                s_fire_level = 1U;
+            }
+            else if (Work_FireReady() == 0U)
+            {
+                Work_FireStop();                   /* 余弹耗尽 */
+            }
+            else if ((s_fire_shots != WORK_FIRE_CONTINUOUS) &&
+                     (s_fire_done >= s_fire_shots))
+            {
+                Work_FireStop();                   /* 计满设定发数（点射/长点射） */
             }
             else
             {
-                /* 间隔结束：还有弹就继续打 */
-                if ((now - s_fire_tick) >= g_cfg.gap_ms)
-                {
-                    if ((s_fire_left == 0U) || (Work_FireReady() == 0U))
-                    {
-                        Work_FireStop();
-                    }
-                    else
-                    {
-                        Work_FirePulse();
-                    }
-                }
+                /* 持续输出中：等待松开 / 计数达成 / 余弹耗尽 */
             }
             break;
 
@@ -729,7 +768,8 @@ void Work_KeyTask(void)
             }
         }
 
-        /* 射击：按射击模式发起；连发/无限制需持续按住 */
+        /* 射击：按下发起。除单发为脉冲外，其余模式按下即持续输出有效电平，
+         * 由 Work_Task 在“计满发数/余弹耗尽”时自动拉低，或松开按键拉低 */
         if ((kC != 0U) && (s_prev[2] == 0U))
         {
             LOG("[KEY] C work\r\n");
@@ -737,28 +777,28 @@ void Work_KeyTask(void)
             {
                 switch (g_cfg.fire_mode)
                 {
-                    case FIRE_MODE_BURST:
-                        Work_FireStart(g_cfg.burst_shots, 0U);
+                    case FIRE_MODE_BURST:      /* 点射：持续输出，计满发数或松开停止 */
+                        Work_FireStart(g_cfg.burst_shots, 0U, 0U);
                         break;
-                    case FIRE_MODE_LONG_BURST:
-                        Work_FireStart(g_cfg.long_burst_shots, 0U);
+                    case FIRE_MODE_LONG_BURST: /* 长点射：持续输出，计满发数或松开停止 */
+                        Work_FireStart(g_cfg.long_burst_shots, 0U, 0U);
                         break;
-                    case FIRE_MODE_AUTO:
-                        Work_FireStart(WORK_FIRE_CONTINUOUS, 0U);
+                    case FIRE_MODE_AUTO:       /* 连射：持续输出，松开或余弹耗尽停止 */
+                        Work_FireStart(WORK_FIRE_CONTINUOUS, 0U, 0U);
                         break;
-                    case FIRE_MODE_UNLIMITED:
-                        Work_FireStart(WORK_FIRE_CONTINUOUS, 1U);
+                    case FIRE_MODE_UNLIMITED:  /* 无限制：持续输出，仅松开停止 */
+                        Work_FireStart(WORK_FIRE_CONTINUOUS, 1U, 0U);
                         break;
-                    default:                   /* 单发 */
-                        Work_FireStart(1U, 0U);
+                    default:                   /* 单发：按一次输出一个脉冲 */
+                        Work_FireStart(1U, 0U, 1U);
                         break;
                 }
             }
         }
         else if ((kC == 0U) && (s_prev[2] != 0U))
         {
-            /* 松开：连发/无限制立即停止，点射按完整序列打完 */
-            if ((g_cfg.fire_mode == FIRE_MODE_AUTO) || (g_cfg.fire_mode == FIRE_MODE_UNLIMITED))
+            /* 松开：单发脉冲自行打完，不受影响；其余模式（持续输出）立即拉低 */
+            if (g_cfg.fire_mode != FIRE_MODE_SINGLE)
             {
                 Work_FireStop();
             }
@@ -821,7 +861,7 @@ void Work_KeyTask(void)
             }
         }
 
-        /* 射击：长按 300ms 启动，按固定时序连续击发并扣减余弹，松开立即停止 */
+        /* 射击：长按 300ms 启动，MCU_OUT1 持续输出有效电平并扣减余弹，松开立即停止 */
         if (kC != 0U)
         {
             if (s_prev[2] == 0U)
@@ -834,7 +874,7 @@ void Work_KeyTask(void)
                 s_hold_act[2] = 1U;
                 if (Work_CanStart() != 0U)
                 {
-                    Work_FireStart(WORK_FIRE_CONTINUOUS, 0U);
+                    Work_FireStart(WORK_FIRE_CONTINUOUS, 0U, 0U);
                 }
             }
         }
